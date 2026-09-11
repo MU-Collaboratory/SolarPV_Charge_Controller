@@ -86,8 +86,8 @@ void SystemManager::setupSystem() {
     pinMode(deviceConfig.boot_LED_pin, OUTPUT);
     pinMode(33, OUTPUT); // pin 33 is used for precharge FET control for capacitive loads (e.g. inverters)
 
-    ledcSetup(0, 5000, 8); // Setup PWM for fan control (channel 0, 5 kHz frequency, 8-bit resolution)
-    ledcAttachPin(deviceConfig.fan_pin, 0); // Attach the fan control pin to the PWM channel
+    ledcAttach(0, 5000, 8); // Setup PWM for fan control (channel 0, 5 kHz frequency, 8-bit resolution)
+    ledcWrite(deviceConfig.fan_pin, 0); // Attach the fan control pin to the PWM channel
 
     digitalWrite(deviceConfig.restart_pin, HIGH); // write high to prevent shutdown until a restart is triggered
     solarFETControl(false);
@@ -630,13 +630,13 @@ void SystemManager::loadFETControl(bool state){
 void SystemManager::prechargeFETControl(bool state){ //TODO: TESTING VERSION, make full implementation
     //digitalWrite(33, state ? HIGH : LOW);
     if(state) { 
-        // // if turning on loads, need to pulse modulate to precharge any large capacitors
-        // for(int i = 0; i<1; i++){
-        //     digitalWrite(33, HIGH);
-        //     delayMicroseconds(100);
-        //     digitalWrite(33, LOW);
-        //     delayMicroseconds(900);
-        // }
+        // if turning on loads, need to pulse modulate to precharge any large capacitors
+        for(int i = 0; i<1; i++){
+            digitalWrite(33, HIGH);
+            delayMicroseconds(100);
+            digitalWrite(33, LOW);
+            delayMicroseconds(900);
+        }
         digitalWrite(33, HIGH); // leave load FETs on after precharge
     }
     else digitalWrite(33, LOW);
@@ -661,7 +661,6 @@ void SystemManager::balanceCells() {
         //systemData.batt.cellDischarge = pullDownBalance(batt.cellVoltages, batt.averageCellVoltage);
 
     }
-    
 }
 
 void SystemManager::onNotify(const char* topic, const char* message) {
