@@ -36,6 +36,8 @@ struct DeviceConfig {
     float min_pack_voltage;
     float solar_shunt_resistance;
     float load_shunt_resistance;
+    float hall_effect_sensitivity;
+    float hall_effect_offset;
     float max_current;
     float thermistor_beta_value;
     float thermistor_series_resistor;
@@ -62,6 +64,7 @@ struct DeviceConfig {
     int fan_pin;
     int thermistor_pin;
     int boot_LED_pin;
+    int hall_effect_pin;
 };
 
 

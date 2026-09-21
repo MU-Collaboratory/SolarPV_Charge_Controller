@@ -19,13 +19,14 @@ Sys_Flags SystemManager::sys_flags = {
     ENABLE_FAN: 0, 
     ENABLE_SOLAR_INA: 0, 
     ENABLE_LOAD_INA: 0,
+    ENABLE_HALL_SENSOR: 0,
     ENABLE_FAKE_BATTERY: 0, // enable fake battery data for testing without BMS
 };
 SystemData SystemManager::systemData  = {
     solarShuntVoltage: 0.00,
     loadShuntVoltage: 0.00,
-    solarShuntCurrent: 0.00,
-    loadShuntCurrent: 0.00,
+    solarCurrent: 0.00,
+    loadCurrent: 0.00,
     solarPowerUse: 0.00,
     loadPowerUse: 0.00,
     boardTemperature: 0.00,
@@ -97,34 +98,23 @@ void SystemManager::setupSystem() {
     // Setup (-1 error, 0 not attempted, 1 success)
     // solarInaStatus = setupSolarINA(); DISABLED DUE TO HARDWARE ISSUE (low impedance path between battery and solar grounds, causes magic smoke)
     loadInaStatus = setupLoadINA();
+    hallSensorStatus = setupHallSensor();
     rtcStatus = setupRTC();
     bmsStatus = setupBMS();
 
     systemData.batt.isCharging = false; // default to not charging, will be updated when BMS data is read
     systemData.batt.isDischarging = false; // default to not discharging, will be updated when BMS data is read
 
-    std::cout << "System setup complete. Load INA status: " << loadInaStatus << ", RTC status: " << rtcStatus << ", BMS status: " << bmsStatus << std::endl;
-
-
-    // Configure rtc
-    // Uncomment the following line to set the RTC to the compile time
-    // This is typically done once to set the initial time.
-    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
-    // Uncomment the following line to manually set the time (e.g., January 21, 2024 at 3:00:00)
-    // rtc.adjust(DateTime(2025, 11, 6, 11, 5, 0)); 
-
-    // Check for BMS
-
-    // Configure BMS
-
-    // Get system settings
-
-    // Perform initial safety checks
-
-    // Initialize arrays
-
-    // Calculate max discharge tribble based on cell count
+    Serial.print("System setup complete. RTC status: ");
+    Serial.print(rtcStatus);
+    Serial.print(", BMS status: ");
+    Serial.print(bmsStatus);
+    Serial.print(", Solar INA status: ");
+    Serial.print(solarInaStatus);
+    Serial.print(", Load INA status: ");
+    Serial.print(loadInaStatus);
+    Serial.print(", Hall sensor status: ");
+    Serial.println(hallSensorStatus);
 }
 
 // SETUP FUNCTIONS
@@ -138,6 +128,18 @@ int SystemManager::setupRTC() {
         Serial.println("Couldn't find RTC");
         return -1; // Return an error code if RTC is not found
     }
+    return 1; // Return success code
+}
+
+int SystemManager::setupHallSensor() {
+    if (!sys_flags.ENABLE_HALL_SENSOR) {
+        return 0; // Hall sensor setup not attempted
+    }
+
+    // Initialize the hall effect sensor (e.g., configure pins, calibration)
+    // Add your hall sensor initialization code here
+    pinMode(deviceConfig.hall_effect_pin, INPUT); // Configure the hall effect sensor pin as input
+
     return 1; // Return success code
 }
 
@@ -208,7 +210,10 @@ void SystemManager::updateSystem() {
     // if(solarInaStatus == 1) getSolarShuntData();
 
     // get data from load INA226 
-    if(loadInaStatus == 1) getLoadShuntData();
+    if(loadInaStatus == 1) loadInaStatus = getLoadShuntData();
+
+    // get data from hall effect sensor
+    if(hallSensorStatus == 1) hallSensorStatus =getHallCurrent();
 
     // get data from RTC
     if(rtcStatus == 1) rtcStatus = getRTCData();
@@ -383,13 +388,19 @@ void SystemManager::reconnectSensors()
     }   
 }
 
+// Reads the current from the hall effect sensor using the ADC and applies calibration factors
+int SystemManager::getHallCurrent(){
+    systemData.loadCurrent = analogRead(deviceConfig.hall_effect_pin) * deviceConfig.hall_effect_sensitivity + deviceConfig.hall_effect_offset;
+    return 1;
+}
+
 // Gets the voltage, current, and power from the INA226
 int SystemManager::getSolarShuntData(){
     // Read values from INA226 (may require calibration)
     systemData.solarShuntVoltage = solarIna.getShuntVoltage_mV();
     //systemData.solarShuntCurrent = solarIna.getCurrent_mA();
-    systemData.solarShuntCurrent = systemData.solarShuntVoltage / deviceConfig.solar_shunt_resistance;
-    systemData.solarPowerUse = systemData.solarShuntCurrent * systemData.solarShuntVoltage / 1000; // in mW
+    systemData.solarCurrent = systemData.solarShuntVoltage / deviceConfig.solar_shunt_resistance;
+    systemData.solarPowerUse = systemData.solarCurrent * systemData.solarShuntVoltage / 1000; // in mW
 
     // Serial.print("Shunt Voltage: ");
     // Serial.print(systemData.solarShuntVoltage);
@@ -410,15 +421,15 @@ int SystemManager::getLoadShuntData(){
     // Read values from INA226 (may require calibration)
     systemData.loadShuntVoltage = loadIna.getShuntVoltage_mV() / 1000;
     //systemData.loadShuntCurrent = loadIna.getCurrent_mA();
-    systemData.loadShuntCurrent = systemData.loadShuntVoltage / deviceConfig.load_shunt_resistance;
-    systemData.loadPowerUse = systemData.loadShuntCurrent * systemData.loadShuntVoltage; // in W
+    systemData.loadCurrent = systemData.loadShuntVoltage / deviceConfig.load_shunt_resistance;
+    systemData.loadPowerUse = systemData.loadCurrent * systemData.loadShuntVoltage; // in W
 
     Serial.print("Load Shunt Voltage: ");
     Serial.print(systemData.loadShuntVoltage);
     Serial.println(" V");
 
     Serial.print("Load Current: ");
-    Serial.print(systemData.loadShuntCurrent);
+    Serial.print(systemData.loadCurrent);
     Serial.println(" A");
 
     Serial.print("Power: ");
@@ -499,19 +510,22 @@ int SystemManager::getBMSData(){
     return 1;
 }
 
-
+// Performs safety checks on the system and returns an error code if any issues are detected. See function for error codes.
 int SystemManager::performSafetyChecks(){
     // This function performs safety checks on the system and returns an error code if any issues are detected. Error codes can be defined as follows:
     // 0: No error
-    // 1: Overcurrent detected
-    // 2: Battery overcharge detected
-    // 3: Load FET failure detected
-    // 4: Cell voltage below safety threshold detected
-    // 5: BMS communication failure detected
-    // 6: RTC communication failure detected
-    // 7: Solar INA226 communication failure detected
-    // 8: Load INA226 communication failure detected
-    // 9: Board overtemperature detected
+    // 1: Board overtemperature detected
+    // 2: Overcurrent detected
+    // 3: Solar (inflow) FET failure detected
+    // 4: Battery overcharge detected
+    // 5: Load (outflow) FET failure detected
+    // 6: Cell voltage below safety threshold
+    // 7: BMS communication failure
+    // 8: RTC communication failure
+    // 9: Load INA communication failure
+    // 10: Solar INA communication failure
+    // 11: Hall effect sensor communication failure
+
 
     // Check temperatures
     if(systemData.boardTemperature > deviceConfig.max_board_temperature) {
@@ -520,7 +534,7 @@ int SystemManager::performSafetyChecks(){
         solarFETControl(false); // cut power from panels
         boardOverTemperature = true; // set overtemperature flag
         notifyObservers("system_error", "Board overtemperature detected!");
-        return 9; // return error code for board overtemperature
+        return 1; // return error code for board overtemperature
     }
     else if (boardOverTemperature && systemData.boardTemperature < deviceConfig.max_board_temperature - 5) {
         Serial.println("Board temperature back to normal. Temperature: " + String(systemData.boardTemperature) + " °C. Resuming normal operation.");
@@ -550,14 +564,14 @@ int SystemManager::performSafetyChecks(){
         solarFETControl(false); // cut power from panels
         digitalWrite(deviceConfig.solar_safety_fet_pin, LOW); // open safety fets to disconnect battery from solar input in case solar FETs failed closed
         notifyObservers("system_error", "Battery overcharge detected!");
-        return 2; // return error code for battery overcharge
+        return 4; // return error code for battery overcharge
     }
 
     // Battery should be disconnected but current is still flowing
-    if(!systemData.batt.isDischarging && systemData.loadShuntCurrent > deviceConfig.max_current * 0.1 && loadInaStatus == 1) { // if load FETs should be off but current is above 10% of max, assume FETs failed closed
-        Serial.println("Load FET failure detected! Current: " + String(systemData.loadShuntCurrent) + " mA");
+    if(!systemData.batt.isDischarging && systemData.loadCurrent > deviceConfig.max_current * 0.1 && loadInaStatus == 1) { // if load FETs should be off but current is above 10% of max, assume FETs failed closed
+        Serial.println("Load FET failure detected! Current: " + String(systemData.loadCurrent) + " mA");
         notifyObservers("system_error", "Load FET failure detected!");
-        return 3; // return error code for load FET failure
+        return 5; // return error code for load FET failure
     }
 
     // Check for battery below safety voltage
@@ -573,7 +587,7 @@ int SystemManager::performSafetyChecks(){
             delay(500);
             digitalWrite(deviceConfig.restart_pin, LOW); // restart pin to shut down the system
             delay(1000);
-            return 4; // return error code for cell voltage below safety threshold
+            return 6; // return error code for cell voltage below safety threshold
         }
         else {
             numSafetyVoltageRechecks++;
@@ -587,24 +601,27 @@ int SystemManager::performSafetyChecks(){
         Serial.println("BMS communication failure detected!");
         bmsStatus = -1; // update BMS status to indicate failure
         notifyObservers("system_error", "BMS communication failure detected!");
-        return 5; // return error code for BMS communication failure
+        return 7; // return error code for BMS communication failure
     }
-
     // Check RTC communication
     if(sys_flags.ENABLE_RTC && rtcStatus != 1) {
         Serial.println("RTC communication failure detected!");
-        return 6; // return error code for RTC communication failure
+        return 8; // return error code for RTC communication failure
     }
     // Check INA226 communication
-    // if(sys_flags.ENABLE_SOLAR_INA && solarInaStatus != 1) {
-    //     Serial.println("Solar INA communication failure detected!");
-    //     return 7; // return error code for solar INA communication failure
-    // }
+    if(sys_flags.ENABLE_SOLAR_INA && solarInaStatus != 1) {
+        Serial.println("Solar INA communication failure detected!");
+        return 9; // return error code for solar INA communication failure
+    }
     if(sys_flags.ENABLE_LOAD_INA && loadInaStatus != 1) {
         Serial.println("Load INA communication failure detected!");
-        return 8; // return error code for load INA communication failure
+        return 10; // return error code for load INA communication failure
     }
-
+    // Check Hall effect sensor communication
+    if(sys_flags.ENABLE_HALL_SENSOR && hallSensorStatus != 1) {
+        Serial.println("Hall effect sensor communication failure detected!");
+        return 11; // return error code for Hall effect sensor communication failure
+    }
 
 
     return 0;
@@ -807,10 +824,10 @@ void SystemManager::sendUpdatesToWebUI(){
     };
     dataDoc["Toggle_Fan"] = fanStatus();
 
-    dataDoc["Solar_Shunt_Current"] = systemData.solarShuntCurrent;
+    dataDoc["Solar_Shunt_Current"] = systemData.solarCurrent;
     dataDoc["Solar_Shunt_Voltage"] = systemData.solarShuntVoltage;
     dataDoc["Solar_Shunt_Power"] = systemData.solarPowerUse;
-    dataDoc["Load_Shunt_Current"] = systemData.loadShuntCurrent;
+    dataDoc["Load_Shunt_Current"] = systemData.loadCurrent;
     dataDoc["Load_Shunt_Voltage"] = systemData.loadShuntVoltage;
     dataDoc["Load_Shunt_Power"] = systemData.loadPowerUse;
     dataDoc["Board_Temperature"] = systemData.boardTemperature;

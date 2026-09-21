@@ -88,6 +88,8 @@ void ConfigManager::loadConfig(const char* filename) {
     deviceConfig.thermistor_nominal_resistance = doc["device_config"]["thermistor_nominal_resistance"].as<float>();
     deviceConfig.thermistor_nominal_temperature = doc["device_config"]["thermistor_nominal_temperature"].as<float>();
     deviceConfig.max_board_temperature = doc["device_config"]["max_board_temperature"].as<float>(); 
+    deviceConfig.hall_effect_sensitivity = doc["device_config"]["hall_effect_sensitivity"].as<float>();
+    deviceConfig.hall_effect_offset = doc["device_config"]["hall_effect_offset"].as<float>();
 
     deviceConfig.fan_on_temperature = doc["device_config"]["fan_on_temperature"].as<float>();
     deviceConfig.fan_off_temperature = doc["device_config"]["fan_off_temperature"].as<float>();
@@ -113,6 +115,7 @@ void ConfigManager::loadConfig(const char* filename) {
     deviceConfig.fan_pin = doc["device_config"]["fan_pin"].as<int>();
     deviceConfig.thermistor_pin = doc["device_config"]["thermistor_pin"].as<int>();
     deviceConfig.boot_LED_pin = doc["device_config"]["boot_LED_pin"].as<int>();
+    deviceConfig.hall_effect_pin = doc["device_config"]["hall_effect_pin"].as<int>();
 }
 
 void ConfigManager::printConfig() {
@@ -183,6 +186,8 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
 
     doc["device_config"]["load_shunt_resistance"] = deviceConfig.load_shunt_resistance;
     doc["device_config"]["solar_shunt_resistance"] = deviceConfig.solar_shunt_resistance;
+    doc["device_config"]["hall_effect_sensitivity"] = deviceConfig.hall_effect_sensitivity;
+    doc["device_config"]["hall_effect_offset"] = deviceConfig.hall_effect_offset;
     doc["device_config"]["max_current"] = deviceConfig.max_current;
 
     doc["device_config"]["thermistor_beta_value"] = deviceConfig.thermistor_beta_value;
@@ -211,6 +216,7 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
     doc["device_config"]["fan_pin"] = deviceConfig.fan_pin;
     doc["device_config"]["thermistor_pin"] = deviceConfig.thermistor_pin;
     doc["device_config"]["boot_LED_pin"] = deviceConfig.boot_LED_pin;
+    doc["device_config"]["hall_effect_pin"] = deviceConfig.hall_effect_pin;
 
     // Serialize JSON to string and write to file
     File configFile = LittleFS.open(filename, "w");

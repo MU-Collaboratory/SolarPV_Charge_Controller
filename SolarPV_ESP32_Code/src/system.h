@@ -15,6 +15,7 @@ struct Sys_Flags {
     unsigned int ENABLE_FAN : 1;
     unsigned int ENABLE_SOLAR_INA : 1;
     unsigned int ENABLE_LOAD_INA : 1;
+    unsigned int ENABLE_HALL_SENSOR : 1;
     unsigned int ENABLE_FAKE_BATTERY : 1; // for testing without BMS, will generate fake battery data
 };
 
@@ -37,8 +38,8 @@ struct BattData {
 struct SystemData {
     float solarShuntVoltage; // Shunt voltage in mV
     float loadShuntVoltage; // Shunt voltage in mV
-    float solarShuntCurrent; // Current in mA
-    float loadShuntCurrent; // Current in mA
+    float solarCurrent; // Current in mA
+    float loadCurrent; // Current in mA
     float solarPowerUse; // Power in mW
     float loadPowerUse; // Power in mW
     float boardTemperature; // Temperature in degrees Celsius
@@ -58,6 +59,7 @@ private:
     int setupRTC(); //to be called to setup RTC
     int setupSolarINA(); //to be called to setup Solar INA
     int setupLoadINA(); //to be called to setup Load INA
+    int setupHallSensor(); //to be called to setup Hall sensor
 
 
 
@@ -69,10 +71,11 @@ public:
 
     static SystemData systemData; // struct to hold system data for easy access and updates
 
-        // status
+    // status
     static volatile int solarInaStatus; // status of Solar INA setup (0 = not attempted, -1 = failed, 1 = successful)
     static volatile int loadInaStatus; // status of Load INA setup (0 = not attempted, -1 = failed, 1 = successful)
     static volatile int rtcStatus; // status of RTC setup (0 = not attempted, -1 = failed, 1 = successful)
+    static volatile int hallSensorStatus; // status of Hall sensor setup (0 = not attempted, -1 = failed, 1 = successful)   
     static volatile int bmsStatus; // status of BMS setup (0 = not attempted, -1 = failed, 1 = successful)
     static volatile int loadStatus; // status of load: 1 is operational, 0 is disconnected, -1 is overcurrent
 
@@ -87,8 +90,13 @@ public:
     void removeObserver(observer* obs) override;
     void notifyObservers(const char* topic, const char* message) override;
 
-    int getSolarShuntData(); //to be called to get shunt data
-    int getLoadShuntData(); //to be called to get shunt data
+    //int getSolarShuntData(); //to be called to get shunt data
+    //int getLoadShuntData(); //to be called to get shunt data
+    int getSolarInputCurrent(); //to be called to get solar current from hall effect sensor
+    int getLoadDrawCurrent(); //to be called to get load current from hall effect sensor
+    int getHallCurrent(); //to be called to get overall current from hall effect sensor
+    int getSolarShuntData(); //to be called to get solar shunt current from INA226
+    int getLoadShuntData(); //to be called to get load shunt current from INA226
     int getRTCData(); //to be called to get RTC data
     int getBMSData(); //to be called to get BMS data
     int getBoardTemperature(); //to be called to get thermistor data
