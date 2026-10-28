@@ -21,8 +21,10 @@ Sys_Flags SystemManager::sys_flags = {
     ENABLE_LOAD_INA: 0,
     ENABLE_HALL_SENSOR: 0,
     ENABLE_FAKE_BATTERY: 0, // enable fake battery data for testing without BMS
+    ENABLE_SAFETY_FETS: 0 // enable safety FETs for protection
 };
 SystemData SystemManager::systemData  = {
+    hallVoltage: 0.00,
     solarShuntVoltage: 0.00,
     loadShuntVoltage: 0.00,
     solarCurrent: 0.00,
@@ -851,10 +853,12 @@ void SystemManager::sendUpdatesToWebUI(){
     flagsDoc["Enable_RTC"] = (int)sys_flags.ENABLE_RTC;
     flagsDoc["Enable_Solar_FETs"] = (int)sys_flags.ENABLE_SOLAR_FETs;
     flagsDoc["Enable_Load_FETs"] = (int)sys_flags.ENABLE_LOAD_FETs;
+    flagsDoc["Enable_Hall_Sensor"] = (int)sys_flags.ENABLE_HALL_SENSOR;
     flagsDoc["Enable_Fan"] = (int)sys_flags.ENABLE_FAN;
     flagsDoc["Enable_Solar_INA"] = (int)sys_flags.ENABLE_SOLAR_INA;
     flagsDoc["Enable_Load_INA"] = (int)sys_flags.ENABLE_LOAD_INA;
     flagsDoc["Enable_Fake_Battery"] = sys_flags.ENABLE_FAKE_BATTERY;
+    flagsDoc["Enable_Safety_FETs"] = (int)sys_flags.ENABLE_SAFETY_FETS;
 
     std::string flagsOut;
     serializeJson(flagsDoc, flagsOut);
@@ -880,6 +884,7 @@ void SystemManager::sendUpdatesToWebUI(){
     dataDoc["Load_Shunt_Current"] = systemData.loadCurrent;
     dataDoc["Load_Shunt_Voltage"] = systemData.loadShuntVoltage;
     dataDoc["Load_Shunt_Power"] = systemData.loadPowerUse;
+    dataDoc["Hall_Voltage"] = systemData.hallVoltage;
     dataDoc["Board_Temperature"] = systemData.boardTemperature;
     dataDoc["RTC_Time"] = systemData.rtcTime.timestamp();
 

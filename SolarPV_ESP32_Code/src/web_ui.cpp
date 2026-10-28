@@ -106,12 +106,16 @@ void WebUI::setupWebUI(){
 	// enable_solar_ina_switcher = ESPUI.addControl(Switcher, "Enable_Solar_INA", "", Wetasphalt, system_flags_section, my_updateObserversCallback);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Load INA:", None, system_flags_section), labelStyle);
 	enable_load_ina_switcher = ESPUI.addControl(Switcher, "Enable_Load_INA", "", Wetasphalt, system_flags_section, my_updateObserversCallback);
+	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Hall Sensor:", None, system_flags_section), labelStyle);
+	enable_hall_switcher = ESPUI.addControl(Switcher, "Enable_Hall_Sensor", "", Wetasphalt, system_flags_section, my_updateObserversCallback);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Solar FETs:", None, system_flags_section), labelStyle);
 	enable_solar_switcher = ESPUI.addControl(Switcher, "Enable_Solar_FETs", "", Wetasphalt, system_flags_section, my_updateObserversCallback);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Load FETs:", None, system_flags_section), labelStyle);
 	enable_load_switcher = ESPUI.addControl(Switcher, "Enable_Load_FETs", "", Wetasphalt, system_flags_section, my_updateObserversCallback);	
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Fan:", None, system_flags_section), labelStyle);
 	enable_fan_switcher = ESPUI.addControl(Switcher, "Enable_Fan", "", Wetasphalt, system_flags_section, my_updateObserversCallback);
+	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Safety FETs:", None, system_flags_section), labelStyle);
+	enable_safety_fets_switcher = ESPUI.addControl(Switcher, "Enable_Safety_FETs", "", Wetasphalt, system_flags_section, my_updateObserversCallback);
 
 
 	// System Data
@@ -130,9 +134,14 @@ void WebUI::setupWebUI(){
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Load A:", None, system_data_section), labelStyle);
 	load_current_label = ESPUI.addControl(Label, "Load_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
 	ESPUI.setElementStyle(load_current_label, dataStyle);
+	solar_current_label = ESPUI.addControl(Label, "Solar_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
+	ESPUI.setElementStyle(solar_current_label, dataStyle);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Load Shunt V:", None, system_data_section), labelStyle);
 	load_shunt_voltage_label = ESPUI.addControl(Label, "Load_Shunt_Voltage", "", Wetasphalt, system_data_section, my_generalCallback);
 	ESPUI.setElementStyle(load_shunt_voltage_label, dataStyle);
+	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Hall Voltage:", None, system_data_section), labelStyle);
+	hall_voltage_label = ESPUI.addControl(Label, "Hall_Voltage", "", Wetasphalt, system_data_section, my_generalCallback);
+	ESPUI.setElementStyle(hall_voltage_label, dataStyle);
 
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Board Temperature:", None, system_data_section), labelStyle);
 	board_temperature_label = ESPUI.addControl(Label, "Board_Temperature", "", Wetasphalt, system_data_section, my_generalCallback);
@@ -585,6 +594,7 @@ void WebUI::onNotify(const char* topic, const char* message) {
 		if (!doc["Load_Shunt_Current"].isNull()) ESPUI.updateLabel(load_current_label, doc["Load_Shunt_Current"]);
 		if (!doc["Solar_Shunt_Voltage"].isNull()) ESPUI.updateLabel(solar_shunt_voltage_label, doc["Solar_Shunt_Voltage"]);
 		if (!doc["Load_Shunt_Voltage"].isNull()) ESPUI.updateLabel(load_shunt_voltage_label, doc["Load_Shunt_Voltage"]);
+		if (!doc["Hall_Voltage"].isNull()) ESPUI.updateLabel(hall_voltage_label, doc["Hall_Voltage"]);
 		if (!doc["Board_Temperature"].isNull()) ESPUI.updateLabel(board_temperature_label, doc["Board_Temperature"]);
 		if (!doc["Pack_V"].isNull()) ESPUI.updateLabel(pack_v_label, doc["Pack_V"]);
 		String cellVoltagesText;
@@ -623,10 +633,12 @@ void WebUI::onNotify(const char* topic, const char* message) {
 		if (!doc["Enable_RTC"].isNull()) ESPUI.updateSwitcher(enable_rtc_switcher, doc["Enable_RTC"]);
 		if (!doc["Enable_Solar_INA"].isNull()) ESPUI.updateSwitcher(enable_solar_ina_switcher, doc["Enable_Solar_INA"]);
 		if (!doc["Enable_Load_INA"].isNull()) ESPUI.updateSwitcher(enable_load_ina_switcher, doc["Enable_Load_INA"]);
+		if (!doc["Enable_Hall_Sensor"].isNull()) ESPUI.updateSwitcher(enable_hall_switcher, doc["Enable_Hall_Sensor"]);
 		if (!doc["Enable_Solar_FETs"].isNull()) ESPUI.updateSwitcher(enable_solar_switcher, doc["Enable_Solar_FETs"]);
 		if (!doc["Enable_Load_FETs"].isNull()) ESPUI.updateSwitcher(enable_load_switcher, doc["Enable_Load_FETs"]);
 		if (!doc["Enable_Fan"].isNull()) ESPUI.updateSwitcher(enable_fan_switcher, doc["Enable_Fan"]);
 		if (!doc["Enable_Fake_Battery"].isNull()) ESPUI.updateSwitcher(enable_fake_battery, doc["Enable_Fake_Battery"]);
+		if (!doc["Enable_Safety_FETs"].isNull()) ESPUI.updateSwitcher(enable_safety_fets_switcher, doc["Enable_Safety_FETs"]);
 
 	}
 	if (strcmp(topic, "system_error") == 0) {

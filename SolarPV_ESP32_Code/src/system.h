@@ -17,6 +17,7 @@ struct Sys_Flags {
     unsigned int ENABLE_LOAD_INA : 1;
     unsigned int ENABLE_HALL_SENSOR : 1;
     unsigned int ENABLE_FAKE_BATTERY : 1; // for testing without BMS, will generate fake battery data
+    unsigned int ENABLE_SAFETY_FETS : 1; // enable safety FETs for protection
 };
 
 struct BattData {
@@ -36,6 +37,7 @@ struct BattData {
 };
 
 struct SystemData {
+    float hallVoltage; // Hall sensor voltage in mV
     float solarShuntVoltage; // Shunt voltage in mV
     float loadShuntVoltage; // Shunt voltage in mV
     float solarCurrent; // Current in mA
