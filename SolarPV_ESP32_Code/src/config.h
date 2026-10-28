@@ -51,6 +51,7 @@ struct DeviceConfig {
     float full_battery_threshold;
     float low_battery_discharge_threshold;
     float fan_duty_cycle;
+    
     int bms_clk_pin;
     int bms_mosi_pin;
     int bms_miso_pin;
@@ -63,8 +64,20 @@ struct DeviceConfig {
     int load_fet_pin;
     int fan_pin;
     int thermistor_pin;
-    int boot_LED_pin;
+    int charging_LED_pin;
+    int discharging_LED_pin;
+    int error_LED_pin;
     int hall_effect_pin;
+
+    int ENABLE_BMS;
+    int ENABLE_RTC;
+    int ENABLE_SOLAR_FETs;
+    int ENABLE_LOAD_FETs;
+    int ENABLE_FAN;
+    int ENABLE_SOLAR_INA;
+    int ENABLE_LOAD_INA;
+    int ENABLE_HALL_SENSOR;
+    int ENABLE_FAKE_BATTERY;
 };
 
 

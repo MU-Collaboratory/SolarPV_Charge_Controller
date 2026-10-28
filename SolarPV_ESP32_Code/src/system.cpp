@@ -30,6 +30,7 @@ SystemData SystemManager::systemData  = {
     solarPowerUse: 0.00,
     loadPowerUse: 0.00,
     boardTemperature: 0.00,
+    backupFETsTriggered: false,
     rtcTime: DateTime(2025, 1, 1, 0, 0, 0), // default time (to be updated when RTC is read)
     batt: {
         cellVoltages: {0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00},
@@ -72,6 +73,17 @@ void SystemManager::setupSystem() {
     // get consts from config
     deviceConfig = ConfigManager::getInstance().deviceConfig;
 
+    // set sys flags from config
+    sys_flags.ENABLE_BMS = deviceConfig.ENABLE_BMS;
+    sys_flags.ENABLE_RTC = deviceConfig.ENABLE_RTC;
+    sys_flags.ENABLE_SOLAR_FETs = deviceConfig.ENABLE_SOLAR_FETs;
+    sys_flags.ENABLE_LOAD_FETs = deviceConfig.ENABLE_LOAD_FETs;
+    sys_flags.ENABLE_FAN = deviceConfig.ENABLE_FAN;
+    sys_flags.ENABLE_SOLAR_INA = deviceConfig.ENABLE_SOLAR_INA;
+    sys_flags.ENABLE_LOAD_INA = deviceConfig.ENABLE_LOAD_INA;
+    sys_flags.ENABLE_HALL_SENSOR = deviceConfig.ENABLE_HALL_SENSOR;
+    sys_flags.ENABLE_FAKE_BATTERY = deviceConfig.ENABLE_FAKE_BATTERY;
+
     // Initialize I2C (one is swapped due to pcb design)
     Wire.begin(deviceConfig.wire_sda_pin, deviceConfig.wire_scl_pin); 
     Wire1.begin(deviceConfig.wire_scl_pin, deviceConfig.wire_sda_pin); 
@@ -84,8 +96,9 @@ void SystemManager::setupSystem() {
     pinMode(deviceConfig.load_fet_pin, OUTPUT);
     pinMode(deviceConfig.fan_pin, OUTPUT);
     pinMode(deviceConfig.thermistor_pin, INPUT);
-    pinMode(deviceConfig.boot_LED_pin, OUTPUT);
-    pinMode(33, OUTPUT); // pin 33 is used for precharge FET control for capacitive loads (e.g. inverters)
+    pinMode(deviceConfig.charging_LED_pin, OUTPUT);
+    pinMode(deviceConfig.discharging_LED_pin, OUTPUT);
+    pinMode(deviceConfig.error_LED_pin, OUTPUT); // Setup error LED pin
 
     ledcAttach(0, 5000, 8); // Setup PWM for fan control (channel 0, 5 kHz frequency, 8-bit resolution)
     ledcWrite(deviceConfig.fan_pin, 0); // Attach the fan control pin to the PWM channel
@@ -93,7 +106,7 @@ void SystemManager::setupSystem() {
     digitalWrite(deviceConfig.restart_pin, HIGH); // write high to prevent shutdown until a restart is triggered
     solarFETControl(false);
     loadFETControl(false);
-    digitalWrite(deviceConfig.solar_safety_fet_pin, HIGH); // close safety fets- they will only be opened when an error occurs
+    safetyFETControl(true); // close safety FETs- they will only be opened when an error occurs
     
     // Setup (-1 error, 0 not attempted, 1 success)
     // solarInaStatus = setupSolarINA(); DISABLED DUE TO HARDWARE ISSUE (low impedance path between battery and solar grounds, causes magic smoke)
@@ -195,7 +208,16 @@ void SystemManager::updateSystem() {
 
     if(systemData.error != 0) {
         Serial.println("Safety check failed with error code: " + String(systemData.error) + ". Taking appropriate action.");
-        // take appropriate action based on error code (e.g., shut down system, send alert, etc.)
+        
+        // flash debug light number of time corresponding to the error code 
+        // TODO: change to use a timer
+        for(int i = 0; i < systemData.error; i++){
+            digitalWrite(deviceConfig.error_LED_pin, HIGH);
+            delay(100);
+            digitalWrite(deviceConfig.error_LED_pin, LOW);
+            delay(100); // delay between flashes
+        }
+        delay(500); // delay after flashing error LED
     }
 
     //##### START OR STOP FUNCTIONS BASED ON FLAGS #####
@@ -207,13 +229,13 @@ void SystemManager::updateSystem() {
     //##### RETRIEVE DATA #####
     Serial.println("Retrieving Data...");
     // get data from solar INA226
-    // if(solarInaStatus == 1) getSolarShuntData();
+    if(solarInaStatus == 1) getSolarShuntData();
 
     // get data from load INA226 
     if(loadInaStatus == 1) loadInaStatus = getLoadShuntData();
 
     // get data from hall effect sensor
-    if(hallSensorStatus == 1) hallSensorStatus =getHallCurrent();
+    if(hallSensorStatus == 1) hallSensorStatus = getLoadCurrent();
 
     // get data from RTC
     if(rtcStatus == 1) rtcStatus = getRTCData();
@@ -229,10 +251,7 @@ void SystemManager::updateSystem() {
         if(configSendTimer + 10000 < millis()){ //balance cells and send config every 10 seconds
             configSendTimer = millis();
             Serial.println("Balancing cells and sending config");
-            //delay(200);
             balanceCells();
-            //bmsStatus = updateBMS();
-            //delay(200); 
         }
     }
 
@@ -290,20 +309,14 @@ void SystemManager::updateSystem() {
             loadFETControl(true); // enable power to loads
         }
     }
-    //##### UPDATE ARRAYS AND CALCULATIONS ##### (may want to move some to initialization)
-    // Serial.println("Updating Data...");
-    // update arrays
-    // update vars
 
+    //##### LED UPDATES #####
+    if(systemData.batt.isCharging) digitalWrite(deviceConfig.charging_LED_pin, HIGH);
+    else digitalWrite(deviceConfig.charging_LED_pin, LOW);
 
-
-    // calculate pack temerature
-    // calculate ambient temperature
-    // calculate power in/out of system
-    // calculate voltage drop behavior and resulting thresholds from panel voltage, battery voltage and charge, and load draw 
+    if(systemData.batt.isDischarging) digitalWrite(deviceConfig.discharging_LED_pin, HIGH);
+    else digitalWrite(deviceConfig.discharging_LED_pin, LOW);
     
-
-    // turn fan on or off based on temperature readings and current
 
     //##### WEB UI UPDATES #####
     // send updates to web UI every 5 seconds
@@ -389,8 +402,25 @@ void SystemManager::reconnectSensors()
 }
 
 // Reads the current from the hall effect sensor using the ADC and applies calibration factors
-int SystemManager::getHallCurrent(){
-    systemData.loadCurrent = analogRead(deviceConfig.hall_effect_pin) * deviceConfig.hall_effect_sensitivity + deviceConfig.hall_effect_offset;
+float SystemManager::readHallCurrent(){
+    return analogRead(deviceConfig.hall_effect_pin) * deviceConfig.hall_effect_sensitivity + deviceConfig.hall_effect_offset;
+}
+
+// Records load current by disconnecting panels
+int SystemManager::getLoadCurrent(){
+    solarFETControl(false); // disconnect panels before measuring load current
+    delay(100); // wait for a short period to stabilize current reading after disconnecting panels
+    systemData.loadCurrent = readHallCurrent();
+    solarFETControl(true); // reconnect panels after measuring load current
+    return 1;
+}
+
+// Records solar current by disconnecting the loads
+int SystemManager::getSolarCurrent(){
+    loadFETControl(false); // disconnect loads before measuring solar current
+    delayMicroseconds(100); // wait for a short period to stabilize current reading after disconnecting loads
+    systemData.solarCurrent = readHallCurrent();
+    loadFETControl(true); // reconnect loads after measuring solar current
     return 1;
 }
 
@@ -542,21 +572,23 @@ int SystemManager::performSafetyChecks(){
     }
 
     // Check overcurrent
-    // if(systemData.loadShuntCurrent > deviceConfig.max_current && loadInaStatus == 1) {
-    //     Serial.println("Overcurrent detected! Shutting off loads. Current: " + String(systemData.loadShuntCurrent) + " mA");
-    //     loadStatus = -1;
-    //     loadFETControl(false); // cut power to loads
-    //     notifyObservers("system_error", "Overcurrent detected! Shutting off loads.");
-    //     return 1; // return error code for overcurrent
-    // }
+    if(systemData.loadCurrent > deviceConfig.max_current && loadInaStatus == 1) {
+        Serial.println("Overcurrent detected! Shutting off loads. Current: " + String(systemData.loadCurrent) + " mA");
+        loadStatus = -1;
+        loadFETControl(false); // cut power to loads
+        notifyObservers("system_error", "Overcurrent detected! Shutting off loads.");
+        return 2; // return error code for overcurrent
+    }
 
     // Check for FET failures
-    // // Solar should be disconnected but current is still flowing - DISABLED DUE TO HARDWARE ISSUE (low impedance path between battery and solar grounds, causes magic smoke)
-    // if(!systemData.batt.isCharging && systemData.solarShuntCurrent > deviceConfig.max_current * 0.1 && solarInaStatus == 1) { // if solar FETs should be off but current is above 10% of max, assume FETs failed closed
-    //     Serial.println("Solar FET failure detected! Current: " + String(systemData.solarShuntCurrent) + " mA");
-    //     // TODO: add second layer of FETs
-    //     //return 2; // return error code for solar FET failure
-    // }
+    // Solar should be disconnected but current is still flowing - DISABLED DUE TO HARDWARE ISSUE (low impedance path between battery and solar grounds, causes magic smoke)
+    if(!systemData.batt.isCharging && systemData.solarCurrent > deviceConfig.max_current * 0.1 && hallSensorStatus == 1) { // if solar FETs should be off but current is above 10% of max, assume FETs failed closed
+        Serial.println("Solar FET failure detected! Current: " + String(systemData.solarCurrent) + " mA");
+        // Trigger solar backup FETs to disconnect battery from solar input
+        safetyFETControl(false);
+        Serial.println("Solar backup FETs triggered to disconnect battery from solar input.");
+        return 3; // return error code for solar FET failure
+    }
 
     // Check for battery overcharge
     if(systemData.batt.maxCellVoltage > deviceConfig.max_cell_voltage + 0.1 && (bmsStatus == 1 || sys_flags.ENABLE_FAKE_BATTERY)) { 
@@ -633,6 +665,13 @@ void SystemManager::solarFETControl(bool state){
     systemData.batt.isCharging = state; // update charging status based on solar FET state
 }
 
+void SystemManager::safetyFETControl(bool state){
+    if(sys_flags.ENABLE_SOLAR_FETs == 0) state=false; // Turn off if solar safety FET control is disabled by flags
+    digitalWrite(deviceConfig.solar_safety_fet_pin, state ? HIGH : LOW);
+    systemData.backupFETsTriggered = !state; // update backup FETs status based on solar backup FET state
+    if(!state) systemData.batt.isCharging = false; // update charging status only if triggered false
+}
+
 void SystemManager::loadFETControl(bool state){
     if(loadStatus == -1){
         notifyObservers("system_error", "Overcurrent detected! Shutting off loads.");
@@ -640,7 +679,18 @@ void SystemManager::loadFETControl(bool state){
     }
     else loadStatus = state;
     if(sys_flags.ENABLE_LOAD_FETs == 0) state=false; // Turn off if load FET control is disabled by flags
-    digitalWrite(deviceConfig.load_fet_pin, state ? HIGH : LOW);
+    //digitalWrite(deviceConfig.load_fet_pin, state ? HIGH : LOW);
+    if(state) { 
+        // if turning on loads, need to pulse modulate to precharge any large capacitors
+        for(int i = 0; i<5; i++){
+            digitalWrite(deviceConfig.load_fet_pin, HIGH);
+            delayMicroseconds(100);
+            digitalWrite(deviceConfig.load_fet_pin, LOW);
+            delayMicroseconds(900);
+        }
+        digitalWrite(deviceConfig.load_fet_pin, HIGH); // leave load FETs on after precharge
+    }
+    else digitalWrite(deviceConfig.load_fet_pin, LOW);
     systemData.batt.isDischarging = state; // update discharging status based on load FET state
 }
 

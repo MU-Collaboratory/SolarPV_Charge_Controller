@@ -114,8 +114,20 @@ void ConfigManager::loadConfig(const char* filename) {
     deviceConfig.load_fet_pin = doc["device_config"]["load_fet_pin"].as<int>();
     deviceConfig.fan_pin = doc["device_config"]["fan_pin"].as<int>();
     deviceConfig.thermistor_pin = doc["device_config"]["thermistor_pin"].as<int>();
-    deviceConfig.boot_LED_pin = doc["device_config"]["boot_LED_pin"].as<int>();
+    deviceConfig.charging_LED_pin = doc["device_config"]["charging_LED_pin"].as<int>();
+    deviceConfig.discharging_LED_pin = doc["device_config"]["discharging_LED_pin"].as<int>();
+    deviceConfig.error_LED_pin = doc["device_config"]["error_LED_pin"].as<int>();
     deviceConfig.hall_effect_pin = doc["device_config"]["hall_effect_pin"].as<int>();
+
+    deviceConfig.ENABLE_BMS = doc["device_config"]["ENABLE_BMS"].as<int>();
+    deviceConfig.ENABLE_RTC = doc["device_config"]["ENABLE_RTC"].as<int>();
+    deviceConfig.ENABLE_SOLAR_FETs = doc["device_config"]["ENABLE_SOLAR_FETs"].as<int>();
+    deviceConfig.ENABLE_LOAD_FETs = doc["device_config"]["ENABLE_LOAD_FETs"].as<int>();
+    deviceConfig.ENABLE_FAN = doc["device_config"]["ENABLE_FAN"].as<int>();
+    deviceConfig.ENABLE_SOLAR_INA = doc["device_config"]["ENABLE_SOLAR_INA"].as<int>();
+    deviceConfig.ENABLE_LOAD_INA = doc["device_config"]["ENABLE_LOAD_INA"].as<int>();
+    deviceConfig.ENABLE_HALL_SENSOR = doc["device_config"]["ENABLE_HALL_SENSOR"].as<int>();
+    deviceConfig.ENABLE_FAKE_BATTERY = doc["device_config"]["ENABLE_FAKE_BATTERY"].as<int>();
 }
 
 void ConfigManager::printConfig() {
@@ -215,8 +227,20 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
     doc["device_config"]["load_fet_pin"] = deviceConfig.load_fet_pin;
     doc["device_config"]["fan_pin"] = deviceConfig.fan_pin;
     doc["device_config"]["thermistor_pin"] = deviceConfig.thermistor_pin;
-    doc["device_config"]["boot_LED_pin"] = deviceConfig.boot_LED_pin;
+    doc["device_config"]["charging_LED_pin"] = deviceConfig.charging_LED_pin;
+    doc["device_config"]["discharging_LED_pin"] = deviceConfig.discharging_LED_pin;
+    doc["device_config"]["error_LED_pin"] = deviceConfig.error_LED_pin;
     doc["device_config"]["hall_effect_pin"] = deviceConfig.hall_effect_pin;
+
+    doc["device_config"]["ENABLE_BMS"] = deviceConfig.ENABLE_BMS;
+    doc["device_config"]["ENABLE_RTC"] = deviceConfig.ENABLE_RTC;
+    doc["device_config"]["ENABLE_SOLAR_FETs"] = deviceConfig.ENABLE_SOLAR_FETs;
+    doc["device_config"]["ENABLE_LOAD_FETs"] = deviceConfig.ENABLE_LOAD_FETs;
+    doc["device_config"]["ENABLE_FAN"] = deviceConfig.ENABLE_FAN;
+    doc["device_config"]["ENABLE_SOLAR_INA"] = deviceConfig.ENABLE_SOLAR_INA;
+    doc["device_config"]["ENABLE_LOAD_INA"] = deviceConfig.ENABLE_LOAD_INA;
+    doc["device_config"]["ENABLE_HALL_SENSOR"] = deviceConfig.ENABLE_HALL_SENSOR;
+    doc["device_config"]["ENABLE_FAKE_BATTERY"] = deviceConfig.ENABLE_FAKE_BATTERY;
 
     // Serialize JSON to string and write to file
     File configFile = LittleFS.open(filename, "w");

@@ -55,6 +55,17 @@
         "load_fet_pin": 16,
         "fan_pin": 4,
         "thermistor_pin": 36,
-        "boot_LED_pin": 26
+        "charging_LED_pin": 26,
+        "discharging_LED_pin": 32,
+        "error_LED_pin": 33,
+        "ENABLE_BMS": 0,
+        "ENABLE_RTC": 0,
+        "ENABLE_SOLAR_FETs": 0,
+        "ENABLE_LOAD_FETs": 0,
+        "ENABLE_FAN": 0,
+        "ENABLE_SOLAR_INA": 0,
+        "ENABLE_LOAD_INA": 0,
+        "ENABLE_HALL_SENSOR": 0,
+        "ENABLE_FAKE_BATTERY": 0
     }
 }

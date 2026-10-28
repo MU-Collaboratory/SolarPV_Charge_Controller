@@ -43,6 +43,7 @@ struct SystemData {
     float solarPowerUse; // Power in mW
     float loadPowerUse; // Power in mW
     float boardTemperature; // Temperature in degrees Celsius
+    bool backupFETsTriggered;
     DateTime rtcTime; // current time from RTC
     BattData batt; // Battery management system data
     int error; // error code for system errors
@@ -92,9 +93,9 @@ public:
 
     //int getSolarShuntData(); //to be called to get shunt data
     //int getLoadShuntData(); //to be called to get shunt data
-    int getSolarInputCurrent(); //to be called to get solar current from hall effect sensor
-    int getLoadDrawCurrent(); //to be called to get load current from hall effect sensor
-    int getHallCurrent(); //to be called to get overall current from hall effect sensor
+    float readHallCurrent(); //to be called to read current from hall effect sensor
+    int getSolarCurrent(); //to be called to get solar current from hall effect sensor
+    int getLoadCurrent(); //to be called to get load current from hall effect sensor
     int getSolarShuntData(); //to be called to get solar shunt current from INA226
     int getLoadShuntData(); //to be called to get load shunt current from INA226
     int getRTCData(); //to be called to get RTC data
@@ -103,6 +104,7 @@ public:
     int performSafetyChecks(); //to be called to perform safety checks
     void balanceCells(); //to be called to balance battery cells
     void solarFETControl(bool state); //to control solar FETs
+    void safetyFETControl(bool state); //to control solar backup FETs
     void loadFETControl(bool state); //to control load FETs
     void prechargeFETControl(bool state); // to control precharge FETs for capacitive loads (e.g. inverters)
     void fanControl(bool state); //to control cooling fan
