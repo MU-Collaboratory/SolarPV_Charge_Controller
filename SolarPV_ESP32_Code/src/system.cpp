@@ -55,6 +55,7 @@ volatile int SystemManager::loadInaStatus = 0;
 volatile int SystemManager::rtcStatus = 0;
 volatile int SystemManager::bmsStatus = 0;
 volatile int SystemManager::loadStatus = 0;
+volatile int SystemManager::hallSensorStatus = 0;
 
 INA226 solarIna(0x40, &Wire); // Create an INA226 object for the solar INA with the default I2C address
 INA226 loadIna(0x41, &Wire); // Create an INA226 object for the load INA with a different I2C address

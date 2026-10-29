@@ -1,13 +1,13 @@
 {
     "wifi_config":{
-        "hostname": "solar_pv_008",
+        "hostname": "solarpv_testing",
         "force_use_hotspot": false,
         "password": "solarpv123"
 
     },
 
     "mqtt_config":{
-        "broker": "mqtt://192.168.10.98:1883",
+        "broker": "mqtt://localhost:1883",
         "port": 1883,
         "username": "solarpv",
         "password": "solarpv123",

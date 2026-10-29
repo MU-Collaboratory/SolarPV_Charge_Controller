@@ -56,7 +56,7 @@ private:
     //divider sections
     uint16_t control_buttons_section, fet_toggle_section, system_flags_section, system_data_section, component_status_section;
     //other
-    uint16_t test_message_text, mainTime, testVoltageSlider, error_section, error_label, enable_fake_battery;
+    uint16_t test_message_text, mainTime, testVoltageSlider, error_section, error_label, error_code_label, enable_fake_battery;
 
     // prototypes
     void generalCallback(Control *sender, int type);

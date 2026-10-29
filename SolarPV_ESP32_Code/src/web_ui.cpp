@@ -60,7 +60,8 @@ void WebUI::setupWebUI(){
 
 	// error display
 	error_section = ESPUI.addControl(Separator, "Errors:", "", None, maintab);
-	error_label = ESPUI.addControl(Label, "Error_Label", "", Peterriver, error_section, my_generalCallback);
+	error_code_label = ESPUI.addControl(Label, "Error_Code_Label", "", Wetasphalt, error_section, my_generalCallback);
+	error_label = ESPUI.addControl(Label, "Error_Label", "", Wetasphalt, error_section, my_generalCallback);
 	ESPUI.setElementStyle(error_label, dataArrayStyle);
 
 
@@ -134,6 +135,7 @@ void WebUI::setupWebUI(){
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Load A:", None, system_data_section), labelStyle);
 	load_current_label = ESPUI.addControl(Label, "Load_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
 	ESPUI.setElementStyle(load_current_label, dataStyle);
+	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Solar A:", None, system_data_section), labelStyle);
 	solar_current_label = ESPUI.addControl(Label, "Solar_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
 	ESPUI.setElementStyle(solar_current_label, dataStyle);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Load Shunt V:", None, system_data_section), labelStyle);
@@ -574,6 +576,8 @@ void WebUI::onNotify(const char* topic, const char* message) {
 			Serial.println("system_update/data payload is not a JSON object");
 			return;
 		}
+
+		if(!doc["Error"].isNull()) ESPUI.updateLabel(error_code_label, doc["Error"]);
 
 		// update switchers based on message
 		if (!doc["Toggle_Solar_FETs"].isNull()) ESPUI.updateSwitcher(toggle_solar_switcher, doc["Toggle_Solar_FETs"]);
