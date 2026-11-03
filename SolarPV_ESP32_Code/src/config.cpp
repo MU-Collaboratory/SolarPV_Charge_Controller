@@ -118,6 +118,7 @@ void ConfigManager::loadConfig(const char* filename) {
     deviceConfig.discharging_LED_pin = doc["device_config"]["discharging_LED_pin"].as<int>();
     deviceConfig.error_LED_pin = doc["device_config"]["error_LED_pin"].as<int>();
     deviceConfig.hall_effect_pin = doc["device_config"]["hall_effect_pin"].as<int>();
+    deviceConfig.shutdown_pin = doc["device_config"]["shutdown_pin"].as<int>();
 
     deviceConfig.ENABLE_BMS = doc["device_config"]["ENABLE_BMS"].as<int>();
     deviceConfig.ENABLE_RTC = doc["device_config"]["ENABLE_RTC"].as<int>();
@@ -231,6 +232,7 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
     doc["device_config"]["discharging_LED_pin"] = deviceConfig.discharging_LED_pin;
     doc["device_config"]["error_LED_pin"] = deviceConfig.error_LED_pin;
     doc["device_config"]["hall_effect_pin"] = deviceConfig.hall_effect_pin;
+    doc["device_config"]["shutdown_pin"] = deviceConfig.shutdown_pin;
 
     doc["device_config"]["ENABLE_BMS"] = deviceConfig.ENABLE_BMS;
     doc["device_config"]["ENABLE_RTC"] = deviceConfig.ENABLE_RTC;

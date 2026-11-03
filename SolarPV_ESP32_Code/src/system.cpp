@@ -57,6 +57,8 @@ volatile int SystemManager::bmsStatus = 0;
 volatile int SystemManager::loadStatus = 0;
 volatile int SystemManager::hallSensorStatus = 0;
 
+volatile bool shutdownFlag = false; // for triggering a shutdown
+
 INA226 solarIna(0x40, &Wire); // Create an INA226 object for the solar INA with the default I2C address
 INA226 loadIna(0x41, &Wire); // Create an INA226 object for the load INA with a different I2C address
 RTC_DS3231 rtc; // create clock object
@@ -69,7 +71,16 @@ bool boardOverTemperature = false; // flag to track if board is currently in an 
 int numSafetyVoltageRechecks = 0;
 int maxSafetyVoltageRechecks = 3; // maximum number of times to recheck voltages after a safety check failure before taking action
 
+int currentErrorFlashes = 0;
+int errorFlashInterval = 500; // interval between error LED flashes in milliseconds
+unsigned long lastErrorFlashTime = 0;
+bool errorLEDState = false;
+
 DeviceConfig deviceConfig;
+
+void IRAM_ATTR handleShutdownInterrupt() { // shutdown interrupt service routine
+    shutdownFlag = true;
+}
 
 
 void SystemManager::setupSystem() {
@@ -103,6 +114,9 @@ void SystemManager::setupSystem() {
     pinMode(deviceConfig.discharging_LED_pin, OUTPUT);
     pinMode(deviceConfig.error_LED_pin, OUTPUT); // Setup error LED pin
 
+    pinMode(deviceConfig.shutdown_pin, INPUT_PULLUP); // Setup shutdown pin
+    attachInterrupt(digitalPinToInterrupt(deviceConfig.shutdown_pin), handleShutdownInterrupt, FALLING); // Attach interrupt for shutdown pin
+
     ledcAttach(0, 5000, 8); // Setup PWM for fan control (channel 0, 5 kHz frequency, 8-bit resolution)
     ledcWrite(deviceConfig.fan_pin, 0); // Attach the fan control pin to the PWM channel
 
@@ -133,7 +147,7 @@ void SystemManager::setupSystem() {
     Serial.println(hallSensorStatus);
 }
 
-// SETUP FUNCTIONS
+// SETUP FUNCTIONS: sets up hardware components and returns status code (-1 error, 0 not attempted, 1 success)
 int SystemManager::setupRTC() {
     if(!sys_flags.ENABLE_RTC) {
         return 0; // RTC setup not attempted
@@ -193,7 +207,6 @@ int SystemManager::setupLoadINA() {
     return 1; // Return success code
 }
 
-// sets up the battery management system
 int SystemManager::setupBMS(){
     if (!sys_flags.ENABLE_BMS) {
         return 0; // BMS setup not attempted
@@ -202,7 +215,14 @@ int SystemManager::setupBMS(){
     return setupLTC6802(); // setup LTC6802 BMS
 }
 
+// UPDATE SYSTEM: performs safety checks, updates sensor data, and handles system flags
 void SystemManager::updateSystem() {
+
+    if(shutdownFlag) {
+        Serial.println("Shutdown triggered!");
+        digitalWrite(deviceConfig.restart_pin, LOW); // Trigger shutdown
+    }
+
     //Serial.println("Updating System...");
     Serial.println("-----");
     //##### SAFETY CHECKS #####
@@ -210,24 +230,27 @@ void SystemManager::updateSystem() {
     if(!firstUpdate)systemData.error = performSafetyChecks();
 
     if(systemData.error != 0) {
-        Serial.println("Safety check failed with error code: " + String(systemData.error) + ". Taking appropriate action.");
-        
-        // flash debug light number of time corresponding to the error code 
-        // TODO: change to use a timer
-        for(int i = 0; i < systemData.error; i++){
-            digitalWrite(deviceConfig.error_LED_pin, HIGH);
-            delay(100);
-            digitalWrite(deviceConfig.error_LED_pin, LOW);
-            delay(100); // delay between flashes
+        if(currentErrorFlashes <= -2){ // reset error flashes
+            currentErrorFlashes = systemData.error*2; // set to two times in order to flash on and off
+            errorLEDState = false; // reset LED state when starting new error flash sequence
         }
-        delay(500); // delay after flashing error LED
+        if(millis() - lastErrorFlashTime >= errorFlashInterval){ // check if it's time to flash the error LED
+            Serial.println("Flashing error LED, currentErrorFlashes: " + currentErrorFlashes);
+            errorLEDState = !errorLEDState; // toggle the error LED state
+            if(currentErrorFlashes > 0) digitalWrite(deviceConfig.error_LED_pin, errorLEDState); // toggle LED state if flashes remaining
+            else digitalWrite(deviceConfig.error_LED_pin, LOW); // turn off LED when done flashing
+            lastErrorFlashTime = millis();
+            currentErrorFlashes--;
+        }
     }
 
     //##### START OR STOP FUNCTIONS BASED ON FLAGS #####
-    if(reconnectSensorsTimer + 10000 < millis()){
-        reconnectSensors();
-        Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus));
-    }
+    // if(reconnectSensorsTimer + 10000 < millis()){
+    //     reconnectSensors();
+    //     Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus) + ", Hall Sensor: " + String(hallSensorStatus));
+    // }
+    reconnectSensors();
+    Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus) + ", Hall Sensor: " + String(hallSensorStatus));
 
     //##### RETRIEVE DATA #####
     Serial.println("Retrieving Data...");
@@ -238,7 +261,10 @@ void SystemManager::updateSystem() {
     if(loadInaStatus == 1) loadInaStatus = getLoadShuntData();
 
     // get data from hall effect sensor
-    if(hallSensorStatus == 1) hallSensorStatus = getLoadCurrent();
+    if(hallSensorStatus == 1) {
+        hallSensorStatus = getLoadCurrent();
+        hallSensorStatus = getSolarCurrent();
+    }
 
     // get data from RTC
     if(rtcStatus == 1) rtcStatus = getRTCData();
@@ -402,6 +428,23 @@ void SystemManager::reconnectSensors()
             loadInaStatus = 0;
         }
     }   
+
+    if(sys_flags.ENABLE_HALL_SENSOR)
+    {
+        if (hallSensorStatus != 1)
+        {
+            Serial.println("Enabling Hall Sensor...");
+            hallSensorStatus = setupHallSensor();
+        }
+    }
+    else
+    {
+        if (hallSensorStatus != 0)
+        {
+            Serial.println("Disabling Hall Sensor...");
+            hallSensorStatus = 0;
+        }
+    }
 }
 
 // Reads the current from the hall effect sensor using the ADC and applies calibration factors
@@ -412,8 +455,10 @@ float SystemManager::readHallCurrent(){
 // Records load current by disconnecting panels
 int SystemManager::getLoadCurrent(){
     solarFETControl(false); // disconnect panels before measuring load current
-    delay(100); // wait for a short period to stabilize current reading after disconnecting panels
+    delayMicroseconds(100); // wait for a short period to stabilize current reading after disconnecting panels
     systemData.loadCurrent = readHallCurrent();
+    Serial.print("Load Current: ");
+    Serial.println(systemData.loadCurrent);
     solarFETControl(true); // reconnect panels after measuring load current
     return 1;
 }
@@ -423,6 +468,8 @@ int SystemManager::getSolarCurrent(){
     loadFETControl(false); // disconnect loads before measuring solar current
     delayMicroseconds(100); // wait for a short period to stabilize current reading after disconnecting loads
     systemData.solarCurrent = readHallCurrent();
+    Serial.print("Solar Current: ");
+    Serial.println(systemData.solarCurrent);
     loadFETControl(true); // reconnect loads after measuring solar current
     return 1;
 }
@@ -635,6 +682,8 @@ int SystemManager::performSafetyChecks(){
     if(sys_flags.ENABLE_BMS && bmsStatus == 1 && readLTC6802(0x02, 6, temp_cfr) == -1) { // if BMS is enabled and was previously working but now read fails, assume communication failure
         Serial.println("BMS communication failure detected!");
         bmsStatus = -1; // update BMS status to indicate failure
+        solarFETControl(false); // turn off solar FETs on BMS communication failure
+        loadFETControl(false); // turn off load FETs on BMS communication failure
         notifyObservers("system_error", "BMS communication failure detected!");
         return 7; // return error code for BMS communication failure
     }
@@ -655,6 +704,8 @@ int SystemManager::performSafetyChecks(){
     // Check Hall effect sensor communication
     if(sys_flags.ENABLE_HALL_SENSOR && hallSensorStatus != 1) {
         Serial.println("Hall effect sensor communication failure detected!");
+        solarFETControl(false); // turn off solar FETs on Hall sensor communication failure
+        loadFETControl(false); // turn off load FETs on Hall sensor communication failure
         return 11; // return error code for Hall effect sensor communication failure
     }
 
@@ -663,13 +714,13 @@ int SystemManager::performSafetyChecks(){
 }
 
 void SystemManager::solarFETControl(bool state){
-    if(sys_flags.ENABLE_SOLAR_FETs == 0) state=false; // Turn off if solar FET control is disabled by flags
+    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!bmsStatus && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar FET control is disabled by flags
     digitalWrite(deviceConfig.solar_fet_pin, state ? HIGH : LOW);
     systemData.batt.isCharging = state; // update charging status based on solar FET state
 }
 
 void SystemManager::safetyFETControl(bool state){
-    if(sys_flags.ENABLE_SOLAR_FETs == 0) state=false; // Turn off if solar safety FET control is disabled by flags
+    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!bmsStatus && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar safety FET control is disabled by flags
     digitalWrite(deviceConfig.solar_safety_fet_pin, state ? HIGH : LOW);
     systemData.backupFETsTriggered = !state; // update backup FETs status based on solar backup FET state
     if(!state) systemData.batt.isCharging = false; // update charging status only if triggered false
@@ -681,7 +732,7 @@ void SystemManager::loadFETControl(bool state){
         state = false;
     }
     else loadStatus = state;
-    if(sys_flags.ENABLE_LOAD_FETs == 0) state=false; // Turn off if load FET control is disabled by flags
+    if(sys_flags.ENABLE_LOAD_FETs == 0 || (!bmsStatus && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if load FET control is disabled by flags
     //digitalWrite(deviceConfig.load_fet_pin, state ? HIGH : LOW);
     if(state) { 
         // if turning on loads, need to pulse modulate to precharge any large capacitors
@@ -845,6 +896,18 @@ void SystemManager::onNotify(const char* topic, const char* message) {
         if (strcmp(message, "1") == 0 && !sys_flags.ENABLE_BMS) sys_flags.ENABLE_FAKE_BATTERY = true;
         else if (strcmp(message, "0") == 0) sys_flags.ENABLE_FAKE_BATTERY = false;
     }
+
+    else if (strcmp(topic, "Enable_Safety_FETs") == 0) {
+        std::cout << "Handling Enable_Safety_FETs with message: " << message << std::endl;
+        if (strcmp(message, "1") == 0) sys_flags.ENABLE_SAFETY_FETS = true;
+        else if (strcmp(message, "0") == 0) sys_flags.ENABLE_SAFETY_FETS = false;
+    }
+
+    else if (strcmp(topic, "Enable_Hall_Sensor") == 0) {
+        std::cout << "Handling Enable_Hall_Sensor with message: " << message << std::endl;
+        if (strcmp(message, "1") == 0) sys_flags.ENABLE_HALL_SENSOR = true;
+        else if (strcmp(message, "0") == 0) sys_flags.ENABLE_HALL_SENSOR = false;
+    }
 }
 
 void SystemManager::sendUpdatesToWebUI(){
@@ -858,7 +921,7 @@ void SystemManager::sendUpdatesToWebUI(){
     flagsDoc["Enable_Fan"] = (int)sys_flags.ENABLE_FAN;
     flagsDoc["Enable_Solar_INA"] = (int)sys_flags.ENABLE_SOLAR_INA;
     flagsDoc["Enable_Load_INA"] = (int)sys_flags.ENABLE_LOAD_INA;
-    flagsDoc["Enable_Fake_Battery"] = sys_flags.ENABLE_FAKE_BATTERY;
+    flagsDoc["Enable_Fake_Battery"] = (int)sys_flags.ENABLE_FAKE_BATTERY;
     flagsDoc["Enable_Safety_FETs"] = (int)sys_flags.ENABLE_SAFETY_FETS;
 
     std::string flagsOut;

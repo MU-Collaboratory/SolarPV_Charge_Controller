@@ -59,6 +59,7 @@ struct DeviceConfig {
     int wire_scl_pin;
     int wire_sda_pin;
     int restart_pin;
+    int shutdown_pin;
     int solar_fet_pin;
     int solar_safety_fet_pin;
     int load_fet_pin;
