@@ -21,7 +21,8 @@ Sys_Flags SystemManager::sys_flags = {
     ENABLE_LOAD_INA: 0,
     ENABLE_HALL_SENSOR: 0,
     ENABLE_FAKE_BATTERY: 0, // enable fake battery data for testing without BMS
-    ENABLE_SAFETY_FETS: 0 // enable safety FETs for protection
+    ENABLE_SAFETY_FETS: 0, // enable safety FETs for protection
+    ENABLE_MANUAL_MODE: 0 // enable manual mode for testing
 };
 SystemData SystemManager::systemData  = {
     hallVoltage: 0.00,
@@ -97,6 +98,7 @@ void SystemManager::setupSystem() {
     sys_flags.ENABLE_LOAD_INA = deviceConfig.ENABLE_LOAD_INA;
     sys_flags.ENABLE_HALL_SENSOR = deviceConfig.ENABLE_HALL_SENSOR;
     sys_flags.ENABLE_FAKE_BATTERY = deviceConfig.ENABLE_FAKE_BATTERY;
+    sys_flags.ENABLE_MANUAL_MODE = deviceConfig.ENABLE_MANUAL_MODE;
 
     // Initialize I2C (one is swapped due to pcb design)
     Wire.begin(deviceConfig.wire_sda_pin, deviceConfig.wire_scl_pin); 
@@ -229,21 +231,6 @@ void SystemManager::updateSystem() {
     Serial.println("Performing Safety Checks...");
     if(!firstUpdate)systemData.error = performSafetyChecks();
 
-    if(systemData.error != 0) {
-        if(currentErrorFlashes <= -2){ // reset error flashes
-            currentErrorFlashes = systemData.error*2; // set to two times in order to flash on and off
-            errorLEDState = false; // reset LED state when starting new error flash sequence
-        }
-        if(millis() - lastErrorFlashTime >= errorFlashInterval){ // check if it's time to flash the error LED
-            Serial.println("Flashing error LED, currentErrorFlashes: " + currentErrorFlashes);
-            errorLEDState = !errorLEDState; // toggle the error LED state
-            if(currentErrorFlashes > 0) digitalWrite(deviceConfig.error_LED_pin, errorLEDState); // toggle LED state if flashes remaining
-            else digitalWrite(deviceConfig.error_LED_pin, LOW); // turn off LED when done flashing
-            lastErrorFlashTime = millis();
-            currentErrorFlashes--;
-        }
-    }
-
     //##### START OR STOP FUNCTIONS BASED ON FLAGS #####
     // if(reconnectSensorsTimer + 10000 < millis()){
     //     reconnectSensors();
@@ -357,6 +344,24 @@ void SystemManager::updateSystem() {
     }
     if(firstUpdate) firstUpdate = false; // reset first update flag after initial update
     Serial.println("-----");
+}
+
+void SystemManager::updateErrorLED() {
+        if(systemData.error != 0) {
+        if(currentErrorFlashes <= -2){ // reset error flashes
+            currentErrorFlashes = systemData.error*2; // set to two times in order to flash on and off
+            errorLEDState = false; // reset LED state when starting new error flash sequence
+        }
+        if(millis() - lastErrorFlashTime >= errorFlashInterval){ // check if it's time to flash the error LED
+            Serial.println("Flashing error LED, currentErrorFlashes: " + String(currentErrorFlashes));
+            errorLEDState = !errorLEDState; // toggle the error LED state
+            if(currentErrorFlashes > 0) digitalWrite(deviceConfig.error_LED_pin, errorLEDState); // toggle LED state if flashes remaining
+            else digitalWrite(deviceConfig.error_LED_pin, LOW); // turn off LED when done flashing
+            lastErrorFlashTime = millis();
+            currentErrorFlashes--;
+        }
+    }
+    else digitalWrite(deviceConfig.error_LED_pin, LOW); // turn off error LED if no error
 }
 
 void SystemManager::reconnectSensors()
@@ -679,7 +684,7 @@ int SystemManager::performSafetyChecks(){
 
     // Check if BMS connected using read
     uint8_t temp_cfr[6];
-    if(sys_flags.ENABLE_BMS && bmsStatus == 1 && readLTC6802(0x02, 6, temp_cfr) == -1) { // if BMS is enabled and was previously working but now read fails, assume communication failure
+    if((sys_flags.ENABLE_BMS && bmsStatus != 1) || (sys_flags.ENABLE_BMS && bmsStatus == 1 && readLTC6802(0x02, 6, temp_cfr) == -1)) { // if BMS is enabled and was previously working but now read fails, assume communication failure prev had && readLTC6802(0x02, 6, temp_cfr) == -1
         Serial.println("BMS communication failure detected!");
         bmsStatus = -1; // update BMS status to indicate failure
         solarFETControl(false); // turn off solar FETs on BMS communication failure
@@ -714,13 +719,13 @@ int SystemManager::performSafetyChecks(){
 }
 
 void SystemManager::solarFETControl(bool state){
-    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!bmsStatus && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar FET control is disabled by flags
+    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!sys_flags.ENABLE_MANUAL_MODE && bmsStatus != 1 && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar FET control is disabled by flags
     digitalWrite(deviceConfig.solar_fet_pin, state ? HIGH : LOW);
     systemData.batt.isCharging = state; // update charging status based on solar FET state
 }
 
 void SystemManager::safetyFETControl(bool state){
-    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!bmsStatus && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar safety FET control is disabled by flags
+    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (sys_flags.ENABLE_MANUAL_MODE && bmsStatus != 1 && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar safety FET control is disabled by flags
     digitalWrite(deviceConfig.solar_safety_fet_pin, state ? HIGH : LOW);
     systemData.backupFETsTriggered = !state; // update backup FETs status based on solar backup FET state
     if(!state) systemData.batt.isCharging = false; // update charging status only if triggered false
@@ -732,7 +737,7 @@ void SystemManager::loadFETControl(bool state){
         state = false;
     }
     else loadStatus = state;
-    if(sys_flags.ENABLE_LOAD_FETs == 0 || (!bmsStatus && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if load FET control is disabled by flags
+    if(sys_flags.ENABLE_LOAD_FETs == 0 || (!sys_flags.ENABLE_MANUAL_MODE && bmsStatus != 1 && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if load FET control is disabled by flags
     //digitalWrite(deviceConfig.load_fet_pin, state ? HIGH : LOW);
     if(state) { 
         // if turning on loads, need to pulse modulate to precharge any large capacitors

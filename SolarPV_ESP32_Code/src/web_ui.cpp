@@ -187,6 +187,8 @@ void WebUI::setupWebUI(){
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "mV", None, testVoltageSlider), lightLabelStyle);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Fake Battery:", None, testVoltageSlider), lightLabelStyle);
 	enable_fake_battery = ESPUI.addControl(Switcher, "Enable_Fake_Battery", "", Wetasphalt, testVoltageSlider, my_updateObserversCallback);
+	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enable Manual Mode:", None, testVoltageSlider), lightLabelStyle);
+	enable_manual_mode = ESPUI.addControl(Switcher, "Enable_Manual_Mode", "", Wetasphalt, testVoltageSlider, my_updateObserversCallback);
 
 	//These are the values for the selector's options. (Note that they *must* be declared static
 	//so that the storage is allocated in global memory and not just on the stack of this function.)
@@ -643,6 +645,7 @@ void WebUI::onNotify(const char* topic, const char* message) {
 		if (!doc["Enable_Fan"].isNull()) ESPUI.updateSwitcher(enable_fan_switcher, doc["Enable_Fan"]);
 		if (!doc["Enable_Fake_Battery"].isNull()) ESPUI.updateSwitcher(enable_fake_battery, doc["Enable_Fake_Battery"]);
 		if (!doc["Enable_Safety_FETs"].isNull()) ESPUI.updateSwitcher(enable_safety_fets_switcher, doc["Enable_Safety_FETs"]);
+		if (!doc["Enable_Manual_Mode"].isNull()) ESPUI.updateSwitcher(enable_manual_mode, doc["Enable_Manual_Mode"]);
 
 	}
 	if (strcmp(topic, "system_error") == 0) {

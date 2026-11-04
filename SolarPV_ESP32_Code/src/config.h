@@ -79,6 +79,7 @@ struct DeviceConfig {
     int ENABLE_LOAD_INA;
     int ENABLE_HALL_SENSOR;
     int ENABLE_FAKE_BATTERY;
+    int ENABLE_MANUAL_MODE;
 };
 
 

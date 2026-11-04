@@ -129,6 +129,7 @@ void ConfigManager::loadConfig(const char* filename) {
     deviceConfig.ENABLE_LOAD_INA = doc["device_config"]["ENABLE_LOAD_INA"].as<int>();
     deviceConfig.ENABLE_HALL_SENSOR = doc["device_config"]["ENABLE_HALL_SENSOR"].as<int>();
     deviceConfig.ENABLE_FAKE_BATTERY = doc["device_config"]["ENABLE_FAKE_BATTERY"].as<int>();
+    deviceConfig.ENABLE_MANUAL_MODE = doc["device_config"]["ENABLE_MANUAL_MODE"].as<int>();
 }
 
 void ConfigManager::printConfig() {
@@ -243,6 +244,7 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
     doc["device_config"]["ENABLE_LOAD_INA"] = deviceConfig.ENABLE_LOAD_INA;
     doc["device_config"]["ENABLE_HALL_SENSOR"] = deviceConfig.ENABLE_HALL_SENSOR;
     doc["device_config"]["ENABLE_FAKE_BATTERY"] = deviceConfig.ENABLE_FAKE_BATTERY;
+    doc["device_config"]["ENABLE_MANUAL_MODE"] = deviceConfig.ENABLE_MANUAL_MODE;
 
     // Serialize JSON to string and write to file
     File configFile = LittleFS.open(filename, "w");

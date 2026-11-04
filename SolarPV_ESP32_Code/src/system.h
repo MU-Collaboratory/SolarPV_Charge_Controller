@@ -18,6 +18,7 @@ struct Sys_Flags {
     unsigned int ENABLE_HALL_SENSOR : 1;
     unsigned int ENABLE_FAKE_BATTERY : 1; // for testing without BMS, will generate fake battery data
     unsigned int ENABLE_SAFETY_FETS : 1; // enable safety FETs for protection
+    unsigned int ENABLE_MANUAL_MODE : 1; // enable manual mode for testing
 };
 
 struct BattData {
@@ -84,6 +85,7 @@ public:
 
     void setupSystem(); //to be called in setup
     void updateSystem(); // to be called in loop
+    void updateErrorLED(); //to be called to update the error LED based on current error status
 
     void reconnectSensors();
 
