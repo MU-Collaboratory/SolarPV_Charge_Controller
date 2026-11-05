@@ -125,8 +125,11 @@ void SystemManager::setupSystem() {
     digitalWrite(deviceConfig.restart_pin, HIGH); // write high to prevent shutdown until a restart is triggered
     solarFETControl(false);
     loadFETControl(false);
-    safetyFETControl(true); // close safety FETs- they will only be opened when an error occurs
-    
+    //safetyFETControl(true); // close safety FETs- they will only be opened when an error occurs
+    digitalWrite(deviceConfig.solar_safety_fet_pin, HIGH); // ensure safety FETs are closed before enabling them
+
+
+
     // Setup (-1 error, 0 not attempted, 1 success)
     // solarInaStatus = setupSolarINA(); DISABLED DUE TO HARDWARE ISSUE (low impedance path between battery and solar grounds, causes magic smoke)
     loadInaStatus = setupLoadINA();
@@ -353,7 +356,7 @@ void SystemManager::updateErrorLED() {
             errorLEDState = false; // reset LED state when starting new error flash sequence
         }
         if(millis() - lastErrorFlashTime >= errorFlashInterval){ // check if it's time to flash the error LED
-            Serial.println("Flashing error LED, currentErrorFlashes: " + String(currentErrorFlashes));
+            //Serial.println("Flashing error LED, currentErrorFlashes: " + String(currentErrorFlashes));
             errorLEDState = !errorLEDState; // toggle the error LED state
             if(currentErrorFlashes > 0) digitalWrite(deviceConfig.error_LED_pin, errorLEDState); // toggle LED state if flashes remaining
             else digitalWrite(deviceConfig.error_LED_pin, LOW); // turn off LED when done flashing
@@ -454,28 +457,32 @@ void SystemManager::reconnectSensors()
 
 // Reads the current from the hall effect sensor using the ADC and applies calibration factors
 float SystemManager::readHallCurrent(){
-    return analogRead(deviceConfig.hall_effect_pin) * deviceConfig.hall_effect_sensitivity + deviceConfig.hall_effect_offset;
+    Serial.print("Hall raw reading: ");
+    Serial.println(analogRead(deviceConfig.hall_effect_pin));
+    float voltage = (analogRead(deviceConfig.hall_effect_pin) * 3.3) / 4096.0; // Convert the analog reading to voltage
+    systemData.hallVoltage = voltage;
+    return (voltage - deviceConfig.hall_effect_offset) * deviceConfig.hall_effect_sensitivity;
 }
 
 // Records load current by disconnecting panels
 int SystemManager::getLoadCurrent(){
-    solarFETControl(false); // disconnect panels before measuring load current
-    delayMicroseconds(100); // wait for a short period to stabilize current reading after disconnecting panels
+    if(systemData.batt.isCharging) {
+        digitalWrite(deviceConfig.solar_fet_pin, LOW); // disconnect panels before measuring load current
+        Serial.println("Disconnecting solar panels to measure load current...");
+        delayMicroseconds(100); // wait for a short period to stabilize current reading after disconnecting panels
+    }
     systemData.loadCurrent = readHallCurrent();
     Serial.print("Load Current: ");
     Serial.println(systemData.loadCurrent);
-    solarFETControl(true); // reconnect panels after measuring load current
+    if(systemData.batt.isCharging) digitalWrite(deviceConfig.solar_fet_pin, HIGH); // reconnect panels after measuring load current
     return 1;
 }
 
 // Records solar current by disconnecting the loads
 int SystemManager::getSolarCurrent(){
-    loadFETControl(false); // disconnect loads before measuring solar current
-    delayMicroseconds(100); // wait for a short period to stabilize current reading after disconnecting loads
-    systemData.solarCurrent = readHallCurrent();
+    systemData.solarCurrent = -readHallCurrent() - systemData.loadCurrent;
     Serial.print("Solar Current: ");
     Serial.println(systemData.solarCurrent);
-    loadFETControl(true); // reconnect loads after measuring solar current
     return 1;
 }
 
@@ -627,7 +634,7 @@ int SystemManager::performSafetyChecks(){
     }
 
     // Check overcurrent
-    if(systemData.loadCurrent > deviceConfig.max_current && loadInaStatus == 1) {
+    if(systemData.loadCurrent > deviceConfig.max_current) {
         Serial.println("Overcurrent detected! Shutting off loads. Current: " + String(systemData.loadCurrent) + " mA");
         loadStatus = -1;
         loadFETControl(false); // cut power to loads
@@ -640,7 +647,8 @@ int SystemManager::performSafetyChecks(){
     if(!systemData.batt.isCharging && systemData.solarCurrent > deviceConfig.max_current * 0.1 && hallSensorStatus == 1) { // if solar FETs should be off but current is above 10% of max, assume FETs failed closed
         Serial.println("Solar FET failure detected! Current: " + String(systemData.solarCurrent) + " mA");
         // Trigger solar backup FETs to disconnect battery from solar input
-        safetyFETControl(false);
+        //safetyFETControl(false);
+        digitalWrite(deviceConfig.solar_safety_fet_pin, LOW); // open safety FETs to disconnect battery from solar input
         Serial.println("Solar backup FETs triggered to disconnect battery from solar input.");
         return 3; // return error code for solar FET failure
     }
@@ -707,20 +715,25 @@ int SystemManager::performSafetyChecks(){
         return 10; // return error code for load INA communication failure
     }
     // Check Hall effect sensor communication
-    if(sys_flags.ENABLE_HALL_SENSOR && hallSensorStatus != 1) {
-        Serial.println("Hall effect sensor communication failure detected!");
-        solarFETControl(false); // turn off solar FETs on Hall sensor communication failure
-        loadFETControl(false); // turn off load FETs on Hall sensor communication failure
-        return 11; // return error code for Hall effect sensor communication failure
-    }
+    // if(sys_flags.ENABLE_HALL_SENSOR && hallSensorStatus != 1) {
+    //     Serial.println("Hall effect sensor communication failure detected!");
+    //     solarFETControl(false); // turn off solar FETs on Hall sensor communication failure
+    //     loadFETControl(false); // turn off load FETs on Hall sensor communication failure
+    //     return 11; // return error code for Hall effect sensor communication failure
+    // }
 
 
     return 0;
 }
 
 void SystemManager::solarFETControl(bool state){
-    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!sys_flags.ENABLE_MANUAL_MODE && bmsStatus != 1 && !sys_flags.ENABLE_FAKE_BATTERY)) state=false; // Turn off if solar FET control is disabled by flags
+    if(sys_flags.ENABLE_SOLAR_FETs == 0 || (!sys_flags.ENABLE_MANUAL_MODE && bmsStatus != 1 && !sys_flags.ENABLE_FAKE_BATTERY)){
+        state=false; // Turn off if solar FET control is disabled by flags
+        Serial.println("Couldn't turn on solar FETs");
+    }
+    Serial.println("Setting solar FET state to: " + String(state));
     digitalWrite(deviceConfig.solar_fet_pin, state ? HIGH : LOW);
+    //if(state) safetyFETControl(true); 
     systemData.batt.isCharging = state; // update charging status based on solar FET state
 }
 
@@ -912,6 +925,12 @@ void SystemManager::onNotify(const char* topic, const char* message) {
         std::cout << "Handling Enable_Hall_Sensor with message: " << message << std::endl;
         if (strcmp(message, "1") == 0) sys_flags.ENABLE_HALL_SENSOR = true;
         else if (strcmp(message, "0") == 0) sys_flags.ENABLE_HALL_SENSOR = false;
+    }
+
+    else if (strcmp(topic, "Enable_Manual_Mode") == 0) {
+        std::cout << "Handling Enable_Manual_Mode with message: " << message << std::endl;
+        if (strcmp(message, "1") == 0) sys_flags.ENABLE_MANUAL_MODE = true;
+        else if (strcmp(message, "0") == 0) sys_flags.ENABLE_MANUAL_MODE = false;
     }
 }
 
