@@ -126,17 +126,17 @@ void WebUI::setupWebUI(){
 	ESPUI.setElementStyle(rtc_time_label, dataArrayStyle);
 
 	// ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Solar Current:", None, system_data_section), labelStyle);
-	// solar_current_label = ESPUI.addControl(Label, "Solar_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
+	// solar_current_label = ESPUI.addControl(Label, "Solar_Current", "", Wetasphalt, system_data_section, my_generalCallback);
 	// ESPUI.setElementStyle(solar_current_label, dataStyle);
 	// ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Solar Shunt Voltage:", None, system_data_section), labelStyle);
 	// solar_shunt_voltage_label = ESPUI.addControl(Label, "Solar_Shunt_Voltage", "", Wetasphalt, system_data_section, my_generalCallback);
 	// ESPUI.setElementStyle(solar_shunt_voltage_label, dataStyle);
 
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Load A:", None, system_data_section), labelStyle);
-	load_current_label = ESPUI.addControl(Label, "Load_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
+	load_current_label = ESPUI.addControl(Label, "Load_Current", "", Wetasphalt, system_data_section, my_generalCallback);
 	ESPUI.setElementStyle(load_current_label, dataStyle);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Solar A:", None, system_data_section), labelStyle);
-	solar_current_label = ESPUI.addControl(Label, "Solar_Shunt_Current", "", Wetasphalt, system_data_section, my_generalCallback);
+	solar_current_label = ESPUI.addControl(Label, "Solar_Current", "", Wetasphalt, system_data_section, my_generalCallback);
 	ESPUI.setElementStyle(solar_current_label, dataStyle);
 	ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Load Shunt V:", None, system_data_section), labelStyle);
 	load_shunt_voltage_label = ESPUI.addControl(Label, "Load_Shunt_Voltage", "", Wetasphalt, system_data_section, my_generalCallback);
@@ -456,11 +456,13 @@ void WebUI::connectWifi() {
 	//Load credentials from EEPROM 
 	if(!(wifiConfig.force_use_hotspot)) {
 		yield();
-		EEPROM.begin(100);
-		String stored_ssid, stored_pass;
-		readStringFromEEPROM(stored_ssid, 0, 32);
-		readStringFromEEPROM(stored_pass, 32, 96);
-		EEPROM.end();
+		// EEPROM.begin(100);
+		// String stored_ssid, stored_pass;
+		// readStringFromEEPROM(stored_ssid, 0, 32);
+		// readStringFromEEPROM(stored_pass, 32, 96);
+		// EEPROM.end();
+		String stored_ssid = wifiConfig.ssid;
+		String stored_pass = wifiConfig.password;
 	
 		//Try to connect with stored credentials, fire up an access point if they don't work.
 		#if defined(ESP32)
@@ -488,7 +490,7 @@ void WebUI::connectWifi() {
 		Serial.println("\nCreating access point...");
 		WiFi.mode(WIFI_AP);
 		WiFi.softAPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
-		WiFi.softAP(wifiConfig.hostname.c_str(), wifiConfig.password.c_str()); //append device ID to hotspot name to make it identifiable
+		WiFi.softAP(wifiConfig.hostname.c_str(), wifiConfig.hotspot_password.c_str()); //append device ID to hotspot name to make it identifiable
 
 		connect_timeout = 20;
 		do {
@@ -504,6 +506,12 @@ void WebUI::connectWifi() {
 		Serial.print("AP IP address: ");
 		Serial.println(IP);
 	}
+	Serial.print("ESP32 MAC Address: ");
+	Serial.println(WiFi.macAddress());
+
+	// notify to start mqtt client
+	notifyObservers("Start_Client", "Start_Client");
+
 }
 
 void WebUI::enterWifiDetailsCallback(Control *sender, int type) {
@@ -596,8 +604,8 @@ void WebUI::onNotify(const char* topic, const char* message) {
 		// Serial.println(doc["Shunt_Current"].as<const char*>());
 
 		if (!doc["RTC_Time"].isNull()) ESPUI.updateLabel(rtc_time_label, doc["RTC_Time"]);
-		if (!doc["Solar_Shunt_Current"].isNull()) ESPUI.updateLabel(solar_current_label, doc["Solar_Shunt_Current"]);
-		if (!doc["Load_Shunt_Current"].isNull()) ESPUI.updateLabel(load_current_label, doc["Load_Shunt_Current"]);
+		if (!doc["Solar_Current"].isNull()) ESPUI.updateLabel(solar_current_label, doc["Solar_Current"]);
+		if (!doc["Load_Current"].isNull()) ESPUI.updateLabel(load_current_label, doc["Load_Current"]);
 		if (!doc["Solar_Shunt_Voltage"].isNull()) ESPUI.updateLabel(solar_shunt_voltage_label, doc["Solar_Shunt_Voltage"]);
 		if (!doc["Load_Shunt_Voltage"].isNull()) ESPUI.updateLabel(load_shunt_voltage_label, doc["Load_Shunt_Voltage"]);
 		if (!doc["Hall_Voltage"].isNull()) ESPUI.updateLabel(hall_voltage_label, doc["Hall_Voltage"]);

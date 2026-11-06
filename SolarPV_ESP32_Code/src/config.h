@@ -7,6 +7,8 @@
 struct WifiConfig {
     String hostname;
     bool force_use_hotspot;
+    String hotspot_password;
+    String ssid;
     String password;
 };
 

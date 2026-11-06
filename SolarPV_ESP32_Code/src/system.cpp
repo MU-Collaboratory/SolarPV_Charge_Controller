@@ -456,10 +456,32 @@ void SystemManager::reconnectSensors()
 }
 
 // Reads the current from the hall effect sensor using the ADC and applies calibration factors
+// Averages multiple ADC samples (moving average over a burst) to reduce noise
 float SystemManager::readHallCurrent(){
-    Serial.print("Hall raw reading: ");
-    Serial.println(analogRead(deviceConfig.hall_effect_pin));
-    float voltage = (analogRead(deviceConfig.hall_effect_pin) * 3.3) / 4096.0; // Convert the analog reading to voltage
+    const int HALL_NUM_SAMPLES = 64;
+    uint32_t sum = 0;
+    for (int i = 0; i < HALL_NUM_SAMPLES; i++)
+    {
+        sum += analogRead(deviceConfig.hall_effect_pin);
+        delayMicroseconds(50);
+    }
+    float avgRaw = (float)sum / HALL_NUM_SAMPLES;
+    Serial.print("Hall raw reading (avg): ");
+    Serial.println(avgRaw);
+    float voltage = (avgRaw * 3.3) / 4096.0; // Convert the analog reading to voltage
+
+    // Moving average across calls
+    static const int WINDOW = 10;
+    static float history[WINDOW];
+    static int idx = 0;
+    static int count = 0;
+    history[idx] = voltage;
+    idx = (idx + 1) % WINDOW;
+    if (count < WINDOW) count++;
+    float total = 0;
+    for (int i = 0; i < count; i++) total += history[i];
+    voltage = total / count;
+
     systemData.hallVoltage = voltage;
     return (voltage - deviceConfig.hall_effect_offset) * deviceConfig.hall_effect_sensitivity;
 }
@@ -480,7 +502,7 @@ int SystemManager::getLoadCurrent(){
 
 // Records solar current by disconnecting the loads
 int SystemManager::getSolarCurrent(){
-    systemData.solarCurrent = -readHallCurrent() - systemData.loadCurrent;
+    systemData.solarCurrent = -(readHallCurrent() - systemData.loadCurrent);
     Serial.print("Solar Current: ");
     Serial.println(systemData.solarCurrent);
     return 1;
@@ -966,10 +988,10 @@ void SystemManager::sendUpdatesToWebUI(){
     };
     dataDoc["Toggle_Fan"] = fanStatus();
 
-    dataDoc["Solar_Shunt_Current"] = systemData.solarCurrent;
+    dataDoc["Solar_Current"] = systemData.solarCurrent;
     dataDoc["Solar_Shunt_Voltage"] = systemData.solarShuntVoltage;
     dataDoc["Solar_Shunt_Power"] = systemData.solarPowerUse;
-    dataDoc["Load_Shunt_Current"] = systemData.loadCurrent;
+    dataDoc["Load_Current"] = systemData.loadCurrent;
     dataDoc["Load_Shunt_Voltage"] = systemData.loadShuntVoltage;
     dataDoc["Load_Shunt_Power"] = systemData.loadPowerUse;
     dataDoc["Hall_Voltage"] = systemData.hallVoltage;

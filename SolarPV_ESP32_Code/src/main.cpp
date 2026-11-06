@@ -40,6 +40,14 @@ void setup(){
   
 	if(ConfigManager::getInstance().deviceConfig.slow_boot) delay(5000); //Delay booting to give time to connect a serial monitor
 
+    //register observers
+  Serial.println("Registering observers...");
+  client.registerObserver(&eventHandler); // main event handler observes MQTT client for incoming messages
+  webUI.registerObserver(&eventHandler); // main event handler observes WebUI for incoming messages
+  webUI.registerObserver(&sys); // System observes WebUI for incoming messages
+  sys.registerObserver(&webUI); // WebUI observes System for updates to display on the UI
+  sys.registerObserver(&eventHandler); // for mqtt pubs
+
   // Setup system
   Serial.println("Setting up system...");
   sys.setupSystem();
@@ -53,15 +61,6 @@ void setup(){
   broker.setupBroker();
   //Serial.println("Setting up mqtt client...");
   webUI.setBroker(&broker);
-
-
-  //register observers
-  Serial.println("Registering observers...");
-  client.registerObserver(&eventHandler); // main event handler observes MQTT client for incoming messages
-  webUI.registerObserver(&eventHandler); // main event handler observes WebUI for incoming messages
-  webUI.registerObserver(&sys); // System observes WebUI for incoming messages
-  sys.registerObserver(&webUI); // WebUI observes System for updates to display on the UI
-  sys.registerObserver(&eventHandler); // for mqtt pubs
 
   Serial.println("System Booted");
 }

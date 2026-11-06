@@ -2,12 +2,14 @@
     "wifi_config":{
         "hostname": "solarpv_testing",
         "force_use_hotspot": false,
-        "password": "solarpv123"
+        "hotspot_password": "solarpv123",
+        "ssid": "Messiah Guest",
+        "password": ""
 
     },
 
     "mqtt_config":{
-        "broker": "mqtt://localhost:1883",
+        "broker": "mqtt://8.234.190.242:1883",
         "port": 1883,
         "username": "solarpv",
         "password": "solarpv123",
@@ -54,7 +56,7 @@
         "restart_pin": 2,
         "solar_fet_pin": 17,
         "solar_safety_fet_pin": 27,
-        "shutdown_pin": 36,
+        "shutdown_pin": 35,
         "load_fet_pin": 16,
         "fan_pin": 4,
         "thermistor_pin": 36,
@@ -62,14 +64,14 @@
         "discharging_LED_pin": 25,
         "error_LED_pin": 33,
         "hall_effect_pin": 34,
-        "ENABLE_BMS": 0,
+        "ENABLE_BMS": 1,
         "ENABLE_RTC": 0,
-        "ENABLE_SOLAR_FETs": 0,
-        "ENABLE_LOAD_FETs": 0,
+        "ENABLE_SOLAR_FETs": 1,
+        "ENABLE_LOAD_FETs": 1,
         "ENABLE_FAN": 0,
         "ENABLE_SOLAR_INA": 0,
         "ENABLE_LOAD_INA": 0,
-        "ENABLE_HALL_SENSOR": 0,
+        "ENABLE_HALL_SENSOR": 1,
         "ENABLE_FAKE_BATTERY": 0,
         "ENABLE_SAFETY_FETS": 0
     }

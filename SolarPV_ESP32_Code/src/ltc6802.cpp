@@ -324,9 +324,9 @@ int updateLTC6802() {
   Serial.println("Reading SPI Registers...");
   // voltage conversion and reading
   startLTC6802Conversion(0x10); //start voltage conversion (all cells) to discard first conversion which may have old data
-  delay(10); //delay to ensure conversion is complete before reading
+  delay(15); //delay to ensure conversion is complete before reading
   startLTC6802Conversion(0x10); //start voltage conversion (all cells)
-  delay(10); //delay to ensure conversion is complete before reading
+  delay(15); //delay to ensure conversion is complete before reading
   readLTC6802(0x04, 20, cvr); //read cell voltages
 
   //temperature conversion and reading
