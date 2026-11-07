@@ -58,7 +58,7 @@ volatile int SystemManager::bmsStatus = 0;
 volatile int SystemManager::loadStatus = 0;
 volatile int SystemManager::hallSensorStatus = 0;
 
-volatile bool shutdownFlag = false; // for triggering a shutdown
+volatile static bool shutdownFlag = false; // for triggering a shutdown
 
 INA226 solarIna(0x40, &Wire); // Create an INA226 object for the solar INA with the default I2C address
 INA226 loadIna(0x41, &Wire); // Create an INA226 object for the load INA with a different I2C address
@@ -69,13 +69,15 @@ float configSendTimer = 0;
 float reconnectSensorsTimer = 0;
 bool firstUpdate = true; // flag to indicate if this is the first update (used to send initial data to web UI immediately on startup)
 bool boardOverTemperature = false; // flag to track if board is currently in an over-temperature state
-int numSafetyVoltageRechecks = 0;
-int maxSafetyVoltageRechecks = 3; // maximum number of times to recheck voltages after a safety check failure before taking action
+int numSafetyRechecks = 0;
+int maxSafetyRechecks = 5; // maximum number of times to recheck voltages after a safety check failure before taking action
 
 int currentErrorFlashes = 0;
-int errorFlashInterval = 500; // interval between error LED flashes in milliseconds
+int errorFlashInterval = 200; // interval between error LED flashes in milliseconds
 unsigned long lastErrorFlashTime = 0;
 bool errorLEDState = false;
+
+float hallEffectZeroVoltage = 1.52;
 
 DeviceConfig deviceConfig;
 
@@ -116,8 +118,9 @@ void SystemManager::setupSystem() {
     pinMode(deviceConfig.discharging_LED_pin, OUTPUT);
     pinMode(deviceConfig.error_LED_pin, OUTPUT); // Setup error LED pin
 
-    pinMode(deviceConfig.shutdown_pin, INPUT_PULLUP); // Setup shutdown pin
-    attachInterrupt(digitalPinToInterrupt(deviceConfig.shutdown_pin), handleShutdownInterrupt, FALLING); // Attach interrupt for shutdown pin
+    //DISABLED DUE TO PIN 35 NOT HAVING PULLUP RESISTOR, CIRCUIT NEEDS FIXED
+    //pinMode(deviceConfig.shutdown_pin, INPUT_PULLUP); // Setup shutdown pin
+    //attachInterrupt(digitalPinToInterrupt(deviceConfig.shutdown_pin), handleShutdownInterrupt, FALLING); // Attach interrupt for shutdown pin
 
     ledcAttach(0, 5000, 8); // Setup PWM for fan control (channel 0, 5 kHz frequency, 8-bit resolution)
     ledcWrite(deviceConfig.fan_pin, 0); // Attach the fan control pin to the PWM channel
@@ -174,6 +177,20 @@ int SystemManager::setupHallSensor() {
     // Initialize the hall effect sensor (e.g., configure pins, calibration)
     // Add your hall sensor initialization code here
     pinMode(deviceConfig.hall_effect_pin, INPUT); // Configure the hall effect sensor pin as input
+    // calibrate zero point for hall effect sensor
+    const int HALL_NUM_SAMPLES = 64;
+    uint32_t sum = 0;
+    for (int i = 0; i < HALL_NUM_SAMPLES; i++)
+    {
+        sum += analogRead(deviceConfig.hall_effect_pin);
+        delayMicroseconds(50);
+    }
+    float avgRaw = (float)sum / HALL_NUM_SAMPLES;
+    float voltage = (avgRaw * 3.3) / 4096.0; // Convert the analog reading to voltage
+
+    Serial.print("Hall zero voltage: ");
+    Serial.println(voltage);
+    hallEffectZeroVoltage = voltage;
 
     return 1; // Return success code
 }
@@ -233,35 +250,9 @@ void SystemManager::updateSystem() {
     //##### SAFETY CHECKS #####
     Serial.println("Performing Safety Checks...");
     if(!firstUpdate)systemData.error = performSafetyChecks();
-
-    //##### START OR STOP FUNCTIONS BASED ON FLAGS #####
-    // if(reconnectSensorsTimer + 10000 < millis()){
-    //     reconnectSensors();
-    //     Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus) + ", Hall Sensor: " + String(hallSensorStatus));
-    // }
-    reconnectSensors();
-    Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus) + ", Hall Sensor: " + String(hallSensorStatus));
-
-    //##### RETRIEVE DATA #####
-    Serial.println("Retrieving Data...");
-    // get data from solar INA226
-    if(solarInaStatus == 1) getSolarShuntData();
-
-    // get data from load INA226 
-    if(loadInaStatus == 1) loadInaStatus = getLoadShuntData();
-
-    // get data from hall effect sensor
-    if(hallSensorStatus == 1) {
-        hallSensorStatus = getLoadCurrent();
-        hallSensorStatus = getSolarCurrent();
-    }
-
-    // get data from RTC
-    if(rtcStatus == 1) rtcStatus = getRTCData();
-
-    // get data from board thermistor
-    getBoardTemperature();
-
+    
+    Serial.println("Managing Power...");
+    
     // get data from BMS and balance cells every 10 seconds
     if(bmsStatus == 1) {
         updateBMS(); // update BMS depending on even or odd day
@@ -273,6 +264,7 @@ void SystemManager::updateSystem() {
             balanceCells();
         }
     }
+
 
     // manage power only if BMS working or using test data (i.e., BMS disabled)
     if((bmsStatus == 1 || sys_flags.ENABLE_FAKE_BATTERY) && !boardOverTemperature) {
@@ -291,7 +283,6 @@ void SystemManager::updateSystem() {
         systemData.batt.averageCellVoltage = totalVoltage / deviceConfig.num_cells;
         
         //##### POWER MANAGEMENT #####
-        Serial.println("Managing Power...");
         Serial.print("Charging: ");
         Serial.print(systemData.batt.isCharging);
         Serial.print("   Discharging: ");
@@ -329,6 +320,34 @@ void SystemManager::updateSystem() {
         }
     }
 
+    //##### START OR STOP FUNCTIONS BASED ON FLAGS #####
+    // if(reconnectSensorsTimer + 10000 < millis()){
+    //     reconnectSensors();
+    //     Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus) + ", Hall Sensor: " + String(hallSensorStatus));
+    // }
+    reconnectSensors();
+    Serial.println("Sensor Status: Load INA: " + String(loadInaStatus) + ", RTC: " + String(rtcStatus) + ", BMS: " + String(bmsStatus) + ", Hall Sensor: " + String(hallSensorStatus));
+
+    //##### RETRIEVE DATA #####
+    Serial.println("Retrieving Data...");
+    // get data from solar INA226
+    if(solarInaStatus == 1) getSolarShuntData();
+
+    // get data from load INA226 
+    if(loadInaStatus == 1) loadInaStatus = getLoadShuntData();
+
+    // get data from hall effect sensor
+    if(hallSensorStatus == 1) {
+        hallSensorStatus = getLoadCurrent();
+        hallSensorStatus = getSolarCurrent();
+    }
+
+    // get data from RTC
+    if(rtcStatus == 1) rtcStatus = getRTCData();
+
+    // get data from board thermistor
+    getBoardTemperature();
+
     //##### LED UPDATES #####
     if(systemData.batt.isCharging) digitalWrite(deviceConfig.charging_LED_pin, HIGH);
     else digitalWrite(deviceConfig.charging_LED_pin, LOW);
@@ -351,7 +370,7 @@ void SystemManager::updateSystem() {
 
 void SystemManager::updateErrorLED() {
         if(systemData.error != 0) {
-        if(currentErrorFlashes <= -2){ // reset error flashes
+        if(currentErrorFlashes <= -4){ // reset error flashes
             currentErrorFlashes = systemData.error*2; // set to two times in order to flash on and off
             errorLEDState = false; // reset LED state when starting new error flash sequence
         }
@@ -456,7 +475,7 @@ void SystemManager::reconnectSensors()
 }
 
 // Reads the current from the hall effect sensor using the ADC and applies calibration factors
-// Averages multiple ADC samples (moving average over a burst) to reduce noise
+// Averages a burst of ADC samples to reduce noise
 float SystemManager::readHallCurrent(){
     const int HALL_NUM_SAMPLES = 64;
     uint32_t sum = 0;
@@ -470,20 +489,13 @@ float SystemManager::readHallCurrent(){
     Serial.println(avgRaw);
     float voltage = (avgRaw * 3.3) / 4096.0; // Convert the analog reading to voltage
 
-    // Moving average across calls
-    static const int WINDOW = 10;
-    static float history[WINDOW];
-    static int idx = 0;
-    static int count = 0;
-    history[idx] = voltage;
-    idx = (idx + 1) % WINDOW;
-    if (count < WINDOW) count++;
-    float total = 0;
-    for (int i = 0; i < count; i++) total += history[i];
-    voltage = total / count;
+    Serial.print("Hall voltage: ");
+    Serial.println(voltage);
 
     systemData.hallVoltage = voltage;
-    return (voltage - deviceConfig.hall_effect_offset) * deviceConfig.hall_effect_sensitivity;
+    Serial.print("Hall current:");
+    Serial.println((voltage - hallEffectZeroVoltage) * deviceConfig.hall_effect_sensitivity);
+    return (voltage - hallEffectZeroVoltage) * deviceConfig.hall_effect_sensitivity;
 }
 
 // Records load current by disconnecting panels
@@ -640,9 +652,31 @@ int SystemManager::performSafetyChecks(){
     // 10: Solar INA communication failure
     // 11: Hall effect sensor communication failure
 
+    uint8_t temp_cfr[6];
+
+    // Check for battery below safety voltage
+    if(systemData.batt.minCellVoltage < deviceConfig.safety_cell_voltage && (bmsStatus == 1 || sys_flags.ENABLE_FAKE_BATTERY)) {
+        Serial.println("Cell" + String(systemData.batt.minCellIndex) + "below safety voltage!" + "Cell voltage: " + String(systemData.batt.minCellVoltage) + " V. Shutting off loads.");
+        Serial.print("Check number: ");
+        Serial.println(numSafetyRechecks + 1);
+
+        if(numSafetyRechecks >= maxSafetyRechecks) {
+            numSafetyRechecks = 0;
+            loadFETControl(false); // cut power to loads
+            notifyObservers("system_error", "Cell below safety voltage, shutting down!");
+            delay(500);
+            digitalWrite(deviceConfig.restart_pin, LOW); // restart pin to shut down the system
+            delay(1000);
+            return 6; // return error code for cell voltage below safety threshold
+        }
+        else {
+            numSafetyRechecks++;
+        }
+    }
+
 
     // Check temperatures
-    if(systemData.boardTemperature > deviceConfig.max_board_temperature) {
+    else if(systemData.boardTemperature > deviceConfig.max_board_temperature) {
         Serial.println("Board overtemperature detected! Temperature: " + String(systemData.boardTemperature) + " °C. Shutting off loads.");
         loadFETControl(false); // cut power to loads
         solarFETControl(false); // cut power from panels
@@ -656,7 +690,7 @@ int SystemManager::performSafetyChecks(){
     }
 
     // Check overcurrent
-    if(systemData.loadCurrent > deviceConfig.max_current) {
+    else if(systemData.loadCurrent > deviceConfig.max_current) {
         Serial.println("Overcurrent detected! Shutting off loads. Current: " + String(systemData.loadCurrent) + " mA");
         loadStatus = -1;
         loadFETControl(false); // cut power to loads
@@ -665,56 +699,42 @@ int SystemManager::performSafetyChecks(){
     }
 
     // Check for FET failures
-    // Solar should be disconnected but current is still flowing - DISABLED DUE TO HARDWARE ISSUE (low impedance path between battery and solar grounds, causes magic smoke)
-    if(!systemData.batt.isCharging && systemData.solarCurrent > deviceConfig.max_current * 0.1 && hallSensorStatus == 1) { // if solar FETs should be off but current is above 10% of max, assume FETs failed closed
-        Serial.println("Solar FET failure detected! Current: " + String(systemData.solarCurrent) + " mA");
+    // Solar should be disconnected but current is still flowing
+    else if(!systemData.batt.isCharging && systemData.solarCurrent > deviceConfig.max_current * 0.1 && hallSensorStatus == 1) { // if solar FETs should be off but current is above 10% of max, assume FETs failed closed
         // Trigger solar backup FETs to disconnect battery from solar input
         //safetyFETControl(false);
-        digitalWrite(deviceConfig.solar_safety_fet_pin, LOW); // open safety FETs to disconnect battery from solar input
-        Serial.println("Solar backup FETs triggered to disconnect battery from solar input.");
-        return 3; // return error code for solar FET failure
+        if(numSafetyRechecks >= maxSafetyRechecks){
+            Serial.println("Solar FET failure detected! Current: " + String(systemData.solarCurrent) + " mA");
+            digitalWrite(deviceConfig.solar_safety_fet_pin, LOW); // open safety FETs to disconnect battery from solar input
+            Serial.println("Solar backup FETs triggered to disconnect battery from solar input.");
+            return 3; // return error code for solar FET failure
+        }
+        else numSafetyRechecks++;
     }
 
     // Check for battery overcharge
-    if(systemData.batt.maxCellVoltage > deviceConfig.max_cell_voltage + 0.1 && (bmsStatus == 1 || sys_flags.ENABLE_FAKE_BATTERY)) { 
-        Serial.println("Battery overcharge detected! Max cell voltage: " + String(systemData.batt.maxCellVoltage) + " V. Cutting power from panels.");
-        solarFETControl(false); // cut power from panels
-        digitalWrite(deviceConfig.solar_safety_fet_pin, LOW); // open safety fets to disconnect battery from solar input in case solar FETs failed closed
-        notifyObservers("system_error", "Battery overcharge detected!");
-        return 4; // return error code for battery overcharge
+    else if(systemData.batt.maxCellVoltage > deviceConfig.max_cell_voltage + 0.1 && (bmsStatus == 1 || sys_flags.ENABLE_FAKE_BATTERY)) { 
+        if(numSafetyRechecks >= maxSafetyRechecks) {
+            Serial.println("Battery overcharge detected! Max cell voltage: " + String(systemData.batt.maxCellVoltage) + " V. Cutting power from panels.");
+            solarFETControl(false); // cut power from panels
+            digitalWrite(deviceConfig.solar_safety_fet_pin, LOW); // open safety fets to disconnect battery from solar input in case solar FETs failed closed
+            notifyObservers("system_error", "Battery overcharge detected!");
+            return 4; // return error code for battery overcharge
+        }
+        else numSafetyRechecks++;
     }
 
     // Battery should be disconnected but current is still flowing
-    if(!systemData.batt.isDischarging && systemData.loadCurrent > deviceConfig.max_current * 0.1 && loadInaStatus == 1) { // if load FETs should be off but current is above 10% of max, assume FETs failed closed
+    else if(!systemData.batt.isDischarging && systemData.loadCurrent > deviceConfig.max_current * 0.1 && loadInaStatus == 1) { // if load FETs should be off but current is above 10% of max, assume FETs failed closed
         Serial.println("Load FET failure detected! Current: " + String(systemData.loadCurrent) + " mA");
         notifyObservers("system_error", "Load FET failure detected!");
         return 5; // return error code for load FET failure
     }
 
-    // Check for battery below safety voltage
-    if(systemData.batt.minCellVoltage < deviceConfig.safety_cell_voltage && (bmsStatus == 1 || sys_flags.ENABLE_FAKE_BATTERY)) {
-        Serial.println("Cell" + String(systemData.batt.minCellIndex) + "below safety voltage!" + "Cell voltage: " + String(systemData.batt.minCellVoltage) + " V. Shutting off loads.");
-        Serial.print("Check number: ");
-        Serial.println(numSafetyVoltageRechecks + 1);
 
-        if(numSafetyVoltageRechecks >= maxSafetyVoltageRechecks) {
-            numSafetyVoltageRechecks = 0;
-            loadFETControl(false); // cut power to loads
-            notifyObservers("system_error", "Cell below safety voltage, shutting down!");
-            delay(500);
-            digitalWrite(deviceConfig.restart_pin, LOW); // restart pin to shut down the system
-            delay(1000);
-            return 6; // return error code for cell voltage below safety threshold
-        }
-        else {
-            numSafetyVoltageRechecks++;
-        }
-    }
-    else numSafetyVoltageRechecks = 0; // reset recheck counter if voltage is back above threshold
 
     // Check if BMS connected using read
-    uint8_t temp_cfr[6];
-    if((sys_flags.ENABLE_BMS && bmsStatus != 1) || (sys_flags.ENABLE_BMS && bmsStatus == 1 && readLTC6802(0x02, 6, temp_cfr) == -1)) { // if BMS is enabled and was previously working but now read fails, assume communication failure prev had && readLTC6802(0x02, 6, temp_cfr) == -1
+    else if((sys_flags.ENABLE_BMS && bmsStatus != 1) || (sys_flags.ENABLE_BMS && bmsStatus == 1 && readLTC6802(0x02, 6, temp_cfr) == -1)) { // if BMS is enabled and was previously working but now read fails, assume communication failure prev had && readLTC6802(0x02, 6, temp_cfr) == -1
         Serial.println("BMS communication failure detected!");
         bmsStatus = -1; // update BMS status to indicate failure
         solarFETControl(false); // turn off solar FETs on BMS communication failure
@@ -723,16 +743,16 @@ int SystemManager::performSafetyChecks(){
         return 7; // return error code for BMS communication failure
     }
     // Check RTC communication
-    if(sys_flags.ENABLE_RTC && rtcStatus != 1) {
+    else if(sys_flags.ENABLE_RTC && rtcStatus != 1) {
         Serial.println("RTC communication failure detected!");
         return 8; // return error code for RTC communication failure
     }
     // Check INA226 communication
-    if(sys_flags.ENABLE_SOLAR_INA && solarInaStatus != 1) {
+    else if(sys_flags.ENABLE_SOLAR_INA && solarInaStatus != 1) {
         Serial.println("Solar INA communication failure detected!");
         return 9; // return error code for solar INA communication failure
     }
-    if(sys_flags.ENABLE_LOAD_INA && loadInaStatus != 1) {
+    else if(sys_flags.ENABLE_LOAD_INA && loadInaStatus != 1) {
         Serial.println("Load INA communication failure detected!");
         return 10; // return error code for load INA communication failure
     }
@@ -743,6 +763,7 @@ int SystemManager::performSafetyChecks(){
     //     loadFETControl(false); // turn off load FETs on Hall sensor communication failure
     //     return 11; // return error code for Hall effect sensor communication failure
     // }
+    else numSafetyRechecks = 0;
 
 
     return 0;

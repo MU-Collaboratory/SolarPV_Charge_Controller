@@ -456,13 +456,18 @@ void WebUI::connectWifi() {
 	//Load credentials from EEPROM 
 	if(!(wifiConfig.force_use_hotspot)) {
 		yield();
-		// EEPROM.begin(100);
-		// String stored_ssid, stored_pass;
-		// readStringFromEEPROM(stored_ssid, 0, 32);
-		// readStringFromEEPROM(stored_pass, 32, 96);
-		// EEPROM.end();
+
 		String stored_ssid = wifiConfig.ssid;
 		String stored_pass = wifiConfig.password;
+
+
+		if(stored_ssid == "") {
+			EEPROM.begin(100);
+			readStringFromEEPROM(stored_ssid, 0, 32);
+			readStringFromEEPROM(stored_pass, 32, 96);
+			EEPROM.end();
+		}
+		
 	
 		//Try to connect with stored credentials, fire up an access point if they don't work.
 		#if defined(ESP32)
@@ -510,7 +515,7 @@ void WebUI::connectWifi() {
 	Serial.println(WiFi.macAddress());
 
 	// notify to start mqtt client
-	notifyObservers("Start_Client", "Start_Client");
+	if(ConfigManager::getInstance().mqttConfig.ENABLE_MQTT) notifyObservers("Start_Client", "Start_Client");
 
 }
 

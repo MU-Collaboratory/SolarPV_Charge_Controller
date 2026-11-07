@@ -1,14 +1,15 @@
 {
     "wifi_config":{
-        "hostname": "solarpv_testing",
+        "hostname": "solarpv_108",
         "force_use_hotspot": false,
         "hotspot_password": "solarpv123",
-        "ssid": "Messiah Guest",
+        "ssid": "",
         "password": ""
 
     },
 
     "mqtt_config":{
+        "ENABLE_MQTT": 0,
         "broker": "mqtt://8.234.190.242:1883",
         "port": 1883,
         "username": "solarpv",
@@ -16,24 +17,23 @@
         "data_topic": "solar_pv/data",
         "command_topic": "solar_pv/command",
         "status_topic": "solar_pv/status",
-        "client_id": "solar_pv_client_008"
+        "client_id": "solar_pv_client_108"
     },
 
     "device_config":{
-        "device_id": "solar_pv_008",
+        "device_id": "solar_pv_108",
         "slow_boot": false,
         "num_cells": 12,
         "max_cell_voltage": 4.1,
-        "min_cell_voltage": 3.2,
-        "safety_cell_voltage": 3.0,
+        "min_cell_voltage": 3.0,
+        "safety_cell_voltage": 2.8,
         "cell_voltage_hysteresis": 0.075,
-        "cell_balance_start": 3.6,
+        "cell_balance_start": 3.4,
         "max_cell_temperature": 60.0,
         "min_cell_temperature": -20.0,
         "load_shunt_resistance": 0.00158,
         "solar_shunt_resistance": 0.000238,
-        "hall_effect_sensitivity": 75.7575,
-        "hall_effect_offset": 1.52,
+        "hall_effect_sensitivity": 90,
         "max_current": 40.0,
         "thermistor_beta_value": 3950.0,
         "thermistor_series_resistor": 10000.0,

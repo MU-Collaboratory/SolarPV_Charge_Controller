@@ -49,6 +49,7 @@ void ConfigManager::loadConfig(const char* filename) {
     wifiConfig.ssid = doc["wifi_config"]["ssid"].as<String>();
     wifiConfig.password = doc["wifi_config"]["password"].as<String>();
 
+    mqttConfig.ENABLE_MQTT = doc["mqtt_config"]["ENABLE_MQTT"].as<int>();
     mqttConfig.broker = doc["mqtt_config"]["broker"].as<String>();
     mqttConfig.port = doc["mqtt_config"]["port"].as<int>();
     mqttConfig.username = doc["mqtt_config"]["username"].as<String>();
@@ -91,7 +92,6 @@ void ConfigManager::loadConfig(const char* filename) {
     deviceConfig.thermistor_nominal_temperature = doc["device_config"]["thermistor_nominal_temperature"].as<float>();
     deviceConfig.max_board_temperature = doc["device_config"]["max_board_temperature"].as<float>(); 
     deviceConfig.hall_effect_sensitivity = doc["device_config"]["hall_effect_sensitivity"].as<float>();
-    deviceConfig.hall_effect_offset = doc["device_config"]["hall_effect_offset"].as<float>();
 
     deviceConfig.fan_on_temperature = doc["device_config"]["fan_on_temperature"].as<float>();
     deviceConfig.fan_off_temperature = doc["device_config"]["fan_off_temperature"].as<float>();
@@ -181,6 +181,7 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
     doc["wifi_config"]["ssid"] = wifiConfig.ssid;
     doc["wifi_config"]["password"] = wifiConfig.password;
 
+    doc["mqtt_config"]["ENABLE_MQTT"] = mqttConfig.ENABLE_MQTT;
     doc["mqtt_config"]["broker"] = mqttConfig.broker;
     doc["mqtt_config"]["port"] = mqttConfig.port;
     doc["mqtt_config"]["username"] = mqttConfig.username;
@@ -205,7 +206,6 @@ void ConfigManager::writeConfig(const char* filename, const WifiConfig& wifiConf
     doc["device_config"]["load_shunt_resistance"] = deviceConfig.load_shunt_resistance;
     doc["device_config"]["solar_shunt_resistance"] = deviceConfig.solar_shunt_resistance;
     doc["device_config"]["hall_effect_sensitivity"] = deviceConfig.hall_effect_sensitivity;
-    doc["device_config"]["hall_effect_offset"] = deviceConfig.hall_effect_offset;
     doc["device_config"]["max_current"] = deviceConfig.max_current;
 
     doc["device_config"]["thermistor_beta_value"] = deviceConfig.thermistor_beta_value;
